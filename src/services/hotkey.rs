@@ -268,11 +268,11 @@ impl HotkeyService {
 
     /// Triggers the action associated with the given shortcut string, if registered.
     pub fn trigger_shortcut(&self, shortcut: &str) -> bool {
-        if let Ok(normalized) = Self::normalize(shortcut) {
-            if let Some(&action) = self.actions.get(&normalized) {
-                self.trigger_action(action);
-                return true;
-            }
+        if let Ok(normalized) = Self::normalize(shortcut)
+            && let Some(&action) = self.actions.get(&normalized)
+        {
+            self.trigger_action(action);
+            return true;
         }
         false
     }

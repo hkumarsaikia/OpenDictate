@@ -7,8 +7,8 @@
 use opendictate::cli::CliArgs;
 use opendictate::services::hotkey::{HotkeyAction, HotkeyError, HotkeyService};
 use opendictate::services::tray::{OpenDictateTray, TrayCallbacks, TrayState};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[test]
 fn test_hotkey_shortcut_parsing_and_normalization() {

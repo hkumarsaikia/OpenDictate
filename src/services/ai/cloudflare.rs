@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{utils::format_enhancement_prompt, AiError, AiProvider};
+use super::{AiError, AiProvider, utils::format_enhancement_prompt};
 
 const DEFAULT_CLOUDFLARE_LLM_MODEL: &str = "@cf/meta/llama-3.1-8b-instruct";
 const DEFAULT_CLOUDFLARE_STT_MODEL: &str = "@cf/openai/whisper";
@@ -119,12 +119,12 @@ impl CloudflareProvider {
                     }
 
                     let acc_resp: AccountsResp = resp.json().await?;
-                    if let Some(list) = acc_resp.result {
-                        if let Some(first) = list.first() {
-                            let resolved = first.id.clone();
-                            let _ = self.cached_account_id.set(resolved.clone());
-                            return Ok(resolved);
-                        }
+                    if let Some(list) = acc_resp.result
+                        && let Some(first) = list.first()
+                    {
+                        let resolved = first.id.clone();
+                        let _ = self.cached_account_id.set(resolved.clone());
+                        return Ok(resolved);
                     }
 
                     return Err(AiError::ApiError(

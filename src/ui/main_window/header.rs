@@ -880,10 +880,11 @@ fn anonymize_home_path(path: &std::path::Path) -> String {
             return format!("~{}", &raw[home.len()..]);
         }
     }
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.is_empty() && raw.starts_with(&home) {
-            return format!("~{}", &raw[home.len()..]);
-        }
+    if let Ok(home) = std::env::var("HOME")
+        && !home.is_empty()
+        && raw.starts_with(&home)
+    {
+        return format!("~{}", &raw[home.len()..]);
     }
     raw
 }
@@ -916,10 +917,10 @@ pub fn generate_troubleshooting_diagnostics(config: &Config) -> String {
         .ok()
         .and_then(|content| {
             for line in content.lines() {
-                if line.starts_with("model name") || line.starts_with("Model") {
-                    if let Some((_, val)) = line.split_once(':') {
-                        return Some(val.trim().to_string());
-                    }
+                if (line.starts_with("model name") || line.starts_with("Model"))
+                    && let Some((_, val)) = line.split_once(':')
+                {
+                    return Some(val.trim().to_string());
                 }
             }
             None
@@ -1237,51 +1238,50 @@ fn inject_details_model_links(dialog: &libadwaita::AboutDialog) {
     }
 
     // The second Website row lives inside the Details subpage's AdwPreferencesGroup -> GtkListBox
-    if let Some(details_web_row) = website_rows.last() {
-        if let Some(list_box) = details_web_row
+    if let Some(details_web_row) = website_rows.last()
+        && let Some(list_box) = details_web_row
             .parent()
             .and_then(|p| p.downcast::<gtk4::ListBox>().ok())
-        {
-            list_box.set_visible(true);
-            // Make sure ancestor AdwPreferencesGroup is visible and titled
-            let mut anc = list_box.parent();
-            while let Some(a) = anc {
-                if let Some(group) = a.downcast_ref::<libadwaita::PreferencesGroup>() {
-                    group.set_title("Default Local AI Models");
-                    group.set_visible(true);
-                    break;
-                }
-                anc = a.parent();
+    {
+        list_box.set_visible(true);
+        // Make sure ancestor AdwPreferencesGroup is visible and titled
+        let mut anc = list_box.parent();
+        while let Some(a) = anc {
+            if let Some(group) = a.downcast_ref::<libadwaita::PreferencesGroup>() {
+                group.set_title("Default Local AI Models");
+                group.set_visible(true);
+                break;
             }
+            anc = a.parent();
+        }
 
-            for (model_name, model_url) in DEFAULT_LOCAL_MODEL_LINKS {
-                let row = libadwaita::ActionRow::builder()
-                    .title(*model_name)
-                    .subtitle(*model_url)
-                    .subtitle_lines(1)
-                    .activatable(true)
-                    .build();
-                let ext_icon = gtk4::Image::from_icon_name("adw-external-link-symbolic");
-                row.add_suffix(&ext_icon);
+        for (model_name, model_url) in DEFAULT_LOCAL_MODEL_LINKS {
+            let row = libadwaita::ActionRow::builder()
+                .title(*model_name)
+                .subtitle(*model_url)
+                .subtitle_lines(1)
+                .activatable(true)
+                .build();
+            let ext_icon = gtk4::Image::from_icon_name("adw-external-link-symbolic");
+            row.add_suffix(&ext_icon);
 
-                let url_str = (*model_url).to_string();
-                row.connect_activated(move |r| {
-                    let parent_win = r.root().and_then(|rt| rt.downcast::<gtk4::Window>().ok());
-                    open_external_url(&url_str, parent_win.as_ref());
-                });
+            let url_str = (*model_url).to_string();
+            row.connect_activated(move |r| {
+                let parent_win = r.root().and_then(|rt| rt.downcast::<gtk4::Window>().ok());
+                open_external_url(&url_str, parent_win.as_ref());
+            });
 
-                list_box.append(&row);
-            }
+            list_box.append(&row);
         }
     }
 }
 
 /// Recursively finds the last `gtk4::ListBox` with `.boxed-list` CSS class in the main page of `AboutDialog`.
 fn find_boxed_list_boxes(root: &gtk4::Widget, out: &mut Vec<gtk4::ListBox>) {
-    if let Some(lb) = root.downcast_ref::<gtk4::ListBox>() {
-        if lb.has_css_class("boxed-list") {
-            out.push(lb.clone());
-        }
+    if let Some(lb) = root.downcast_ref::<gtk4::ListBox>()
+        && lb.has_css_class("boxed-list")
+    {
+        out.push(lb.clone());
     }
     let mut child = root.first_child();
     while let Some(c) = child {
@@ -1315,18 +1315,18 @@ fn inject_buy_me_a_coffee_row(dialog: &libadwaita::AboutDialog) {
         .or_else(|| find_action_row_by_title(&root_widget, "Legal"))
         .or_else(|| find_action_row_by_title(&root_widget, "Credits"));
 
-    if let Some(ack_row) = target_row {
-        if let Some(parent) = ack_row.parent() {
-            if let Some(list_box) = parent.downcast_ref::<gtk4::ListBox>() {
-                list_box.append(&coffee_row);
-                return;
-            } else if let Some(group) = parent.downcast_ref::<libadwaita::PreferencesGroup>() {
-                group.add(&coffee_row);
-                return;
-            } else if let Some(pbox) = parent.downcast_ref::<gtk4::Box>() {
-                pbox.append(&coffee_row);
-                return;
-            }
+    if let Some(ack_row) = target_row
+        && let Some(parent) = ack_row.parent()
+    {
+        if let Some(list_box) = parent.downcast_ref::<gtk4::ListBox>() {
+            list_box.append(&coffee_row);
+            return;
+        } else if let Some(group) = parent.downcast_ref::<libadwaita::PreferencesGroup>() {
+            group.add(&coffee_row);
+            return;
+        } else if let Some(pbox) = parent.downcast_ref::<gtk4::Box>() {
+            pbox.append(&coffee_row);
+            return;
         }
     }
 
@@ -1334,10 +1334,10 @@ fn inject_buy_me_a_coffee_row(dialog: &libadwaita::AboutDialog) {
     find_boxed_list_boxes(&root_widget, &mut list_boxes);
     if let Some(last_lb) = list_boxes.last() {
         last_lb.append(&coffee_row);
-    } else if let Some(child) = dialog.child() {
-        if let Some(pbox) = child.downcast_ref::<gtk4::Box>() {
-            pbox.append(&coffee_row);
-        }
+    } else if let Some(child) = dialog.child()
+        && let Some(pbox) = child.downcast_ref::<gtk4::Box>()
+    {
+        pbox.append(&coffee_row);
     }
 }
 

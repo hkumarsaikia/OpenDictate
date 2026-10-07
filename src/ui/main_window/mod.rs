@@ -9,7 +9,7 @@ use crate::services::dictation_worker::{
 };
 use crate::services::storage::StorageService;
 use crate::services::tray::{OpenDictateTray, TrayState};
-use crate::ui::theme::{sync_theme_with_adwaita, ThemeMode};
+use crate::ui::theme::{ThemeMode, sync_theme_with_adwaita};
 use gtk4::gio;
 use gtk4::prelude::*;
 use libadwaita::prelude::*;

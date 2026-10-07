@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{utils::format_enhancement_prompt, AiError, AiProvider};
+use super::{AiError, AiProvider, utils::format_enhancement_prompt};
 
 const DEFAULT_OPENROUTER_MODEL: &str = "qwen/qwen3.8-27b:free";
 

@@ -188,10 +188,10 @@ pub fn build_preview_drawer() -> (gtk4::Revealer, PreviewDrawerWidgets) {
         let start = tb_copy.start_iter();
         let end = tb_copy.end_iter();
         let text = tb_copy.text(&start, &end, false).to_string();
-        if !text.trim().is_empty() {
-            if let Ok(mut clip) = arboard::Clipboard::new() {
-                let _ = clip.set_text(text);
-            }
+        if !text.trim().is_empty()
+            && let Ok(mut clip) = arboard::Clipboard::new()
+        {
+            let _ = clip.set_text(text);
         }
     });
 

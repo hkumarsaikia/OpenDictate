@@ -1576,7 +1576,7 @@ pub async fn fetch_models_for_provider(
             return Err(AiError::UnsupportedOperation(format!(
                 "Unsupported provider: {}",
                 provider
-            )))
+            )));
         }
     };
 
@@ -1984,19 +1984,17 @@ pub async fn fetch_model_usage_limits(
             let rem_req = header_val(&headers, "x-ratelimit-remaining-requests");
             let rem_tok = header_val(&headers, "x-ratelimit-remaining-tokens");
             let json: serde_json::Value = res.json().await?;
-            if let Some(arr) = json.get("data").and_then(|v| v.as_array()) {
-                if let Some(m) = arr.iter().find(|item| {
+            if let Some(arr) = json.get("data").and_then(|v| v.as_array())
+                && let Some(m) = arr.iter().find(|item| {
                     item.get("id")
                         .and_then(|v| v.as_str())
                         .map(|id| id.eq_ignore_ascii_case(&effective_model))
                         .unwrap_or(false)
-                }) {
-                    if let Some(cw) = m.get("context_window").and_then(|v| v.as_u64()) {
-                        if !effective_model.to_lowercase().contains("whisper") {
-                            info.context_or_audio_limit = format!("{} context window", cw);
-                        }
-                    }
-                }
+                })
+                && let Some(cw) = m.get("context_window").and_then(|v| v.as_u64())
+                && !effective_model.to_lowercase().contains("whisper")
+            {
+                info.context_or_audio_limit = format!("{} context window", cw);
             }
             info.key_status = "Verified (Active Groq API Key)".to_string();
             info.remaining_quota = match (rem_req, rem_tok) {
@@ -2195,23 +2193,20 @@ pub async fn verify_model_selection_live(
                     .header("Authorization", format!("Bearer {}", key))
                     .send()
                     .await
+                    && res.status().is_success()
+                    && let Ok(json) = res.json::<serde_json::Value>().await
+                    && let Some(data) = json.get("data")
                 {
-                    if res.status().is_success() {
-                        if let Ok(json) = res.json::<serde_json::Value>().await {
-                            if let Some(data) = json.get("data") {
-                                let is_free_tier = data
-                                    .get("is_free_tier")
-                                    .and_then(|v| v.as_bool())
-                                    .unwrap_or(true);
-                                let limit_rem = data
-                                    .get("limit_remaining")
-                                    .and_then(|v| v.as_f64())
-                                    .unwrap_or(0.0);
-                                if !is_free_tier || limit_rem > 0.0 {
-                                    user_has_paid_plan = true;
-                                }
-                            }
-                        }
+                    let is_free_tier = data
+                        .get("is_free_tier")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+                    let limit_rem = data
+                        .get("limit_remaining")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    if !is_free_tier || limit_rem > 0.0 {
+                        user_has_paid_plan = true;
                     }
                 }
             }
@@ -2221,13 +2216,11 @@ pub async fn verify_model_selection_live(
                     .header("Authorization", format!("Bearer {}", key))
                     .send()
                     .await
+                    && res.status().is_success()
+                    && let Ok(json) = res.json::<serde_json::Value>().await
                 {
-                    if res.status().is_success() {
-                        if let Ok(json) = res.json::<serde_json::Value>().await {
-                            user_has_paid_plan =
-                                json.get("isPro").and_then(|v| v.as_bool()).unwrap_or(false);
-                        }
-                    }
+                    user_has_paid_plan =
+                        json.get("isPro").and_then(|v| v.as_bool()).unwrap_or(false);
                 }
             }
             _ => {
@@ -2348,10 +2341,10 @@ impl AiManager {
             Err(AiError::UnsupportedOperation(msg)) => {
                 // If primary provider is enhancement-only, fall back to available audio STT providers
                 for fallback_name in ["groq", "cloudflare", "gemini", "openai", "huggingface"] {
-                    if let Ok(stt_provider) = self.get_provider(fallback_name) {
-                        if let Ok(text) = stt_provider.transcribe(audio_wav.to_vec(), None).await {
-                            return Ok(text);
-                        }
+                    if let Ok(stt_provider) = self.get_provider(fallback_name)
+                        && let Ok(text) = stt_provider.transcribe(audio_wav.to_vec(), None).await
+                    {
+                        return Ok(text);
                     }
                 }
                 Err(AiError::UnsupportedOperation(msg))

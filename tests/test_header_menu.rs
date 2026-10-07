@@ -308,11 +308,11 @@ fn test_history_page_empty_and_populated_and_delete() {
                 if let Ok(actions_box) = c.clone().downcast::<gtk4::Box>() {
                     let mut btn_child = actions_box.first_child();
                     while let Some(b) = btn_child {
-                        if let Ok(btn) = b.clone().downcast::<gtk4::Button>() {
-                            if btn.icon_name().as_deref() == Some("user-trash-symbolic") {
-                                delete_btn_opt = Some(btn);
-                                break;
-                            }
+                        if let Ok(btn) = b.clone().downcast::<gtk4::Button>()
+                            && btn.icon_name().as_deref() == Some("user-trash-symbolic")
+                        {
+                            delete_btn_opt = Some(btn);
+                            break;
                         }
                         btn_child = b.next_sibling();
                     }
@@ -401,22 +401,22 @@ fn test_about_dialog_details_credits_and_buy_me_a_coffee() {
         assert!(diag.contains("[Paths]"));
         assert!(diag.contains("~/.config/opendictate/config.json"));
         assert!(diag.contains("~/.local/share/opendictate"));
-        if let Ok(home) = std::env::var("HOME") {
-            if !home.is_empty() {
-                assert!(
-                    !diag.contains(&home),
-                    "Diagnostics must anonymize $HOME ({}) to ~ so it is not tied to one user's machine",
-                    home
-                );
-            }
+        if let Ok(home) = std::env::var("HOME")
+            && !home.is_empty()
+        {
+            assert!(
+                !diag.contains(&home),
+                "Diagnostics must anonymize $HOME ({}) to ~ so it is not tied to one user's machine",
+                home
+            );
         }
 
         // Helper to check ActionRow titles and subtitles in the AboutDialog widget tree
         fn has_action_row(w: &gtk4::Widget, title: &str) -> bool {
-            if let Some(row) = w.downcast_ref::<libadwaita::ActionRow>() {
-                if row.title().as_str() == title {
-                    return true;
-                }
+            if let Some(row) = w.downcast_ref::<libadwaita::ActionRow>()
+                && row.title().as_str() == title
+            {
+                return true;
             }
             let mut child = w.first_child();
             while let Some(c) = child {
@@ -429,12 +429,11 @@ fn test_about_dialog_details_credits_and_buy_me_a_coffee() {
         }
 
         fn has_action_row_subtitle(w: &gtk4::Widget, sub_substr: &str) -> bool {
-            if let Some(row) = w.downcast_ref::<libadwaita::ActionRow>() {
-                if let Some(sub) = row.subtitle() {
-                    if sub.contains(sub_substr) {
-                        return true;
-                    }
-                }
+            if let Some(row) = w.downcast_ref::<libadwaita::ActionRow>()
+                && let Some(sub) = row.subtitle()
+                && sub.contains(sub_substr)
+            {
+                return true;
             }
             let mut child = w.first_child();
             while let Some(c) = child {
@@ -478,10 +477,10 @@ fn test_about_dialog_details_credits_and_buy_me_a_coffee() {
             .child()
             .unwrap_or_else(|| coffee_dlg.clone().upcast::<gtk4::Widget>());
         fn has_entry_row(w: &gtk4::Widget, title: &str) -> bool {
-            if let Some(row) = w.downcast_ref::<libadwaita::EntryRow>() {
-                if row.title().as_str() == title {
-                    return true;
-                }
+            if let Some(row) = w.downcast_ref::<libadwaita::EntryRow>()
+                && row.title().as_str() == title
+            {
+                return true;
             }
             let mut child = w.first_child();
             while let Some(c) = child {
@@ -493,10 +492,10 @@ fn test_about_dialog_details_credits_and_buy_me_a_coffee() {
             false
         }
         fn has_label_containing(w: &gtk4::Widget, needle: &str) -> bool {
-            if let Some(lbl) = w.downcast_ref::<gtk4::Label>() {
-                if lbl.text().contains(needle) {
-                    return true;
-                }
+            if let Some(lbl) = w.downcast_ref::<gtk4::Label>()
+                && lbl.text().contains(needle)
+            {
+                return true;
             }
             let mut child = w.first_child();
             while let Some(c) = child {

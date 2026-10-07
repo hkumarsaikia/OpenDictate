@@ -139,10 +139,10 @@ impl Worker for DictationWorker {
                     return;
                 }
                 self.ai_manager = AiManager::from_config(&cfg);
-                if self.config.audio_device != cfg.audio_device {
-                    if let Ok(rec) = AudioRecorder::new(cfg.audio_device.clone()) {
-                        self.recorder = rec;
-                    }
+                if self.config.audio_device != cfg.audio_device
+                    && let Ok(rec) = AudioRecorder::new(cfg.audio_device.clone())
+                {
+                    self.recorder = rec;
                 }
                 self.config = cfg;
             }

@@ -88,3 +88,27 @@ fn test_config_dual_engine_fields() {
     );
     assert_eq!(deserialized.local_threads, 6);
 }
+
+#[test]
+fn test_config_default_language_is_english_and_normalizes_invalid() {
+    let cfg = Config::default();
+    assert_eq!(cfg.ui_language, "en");
+
+    let dir = tempdir().expect("failed to create temp dir");
+    let invalid_path = dir.path().join("invalid_lang.json");
+    fs::write(&invalid_path, r#"{"ui_language": "unknown_locale_xyz"}"#)
+        .expect("failed to write invalid_lang.json");
+    let loaded = Config::load_from(&invalid_path).expect("failed to load config");
+    assert_eq!(
+        loaded.ui_language, "en",
+        "Unrecognized ui_language must normalize to 'en'"
+    );
+
+    let empty_path = dir.path().join("empty_lang.json");
+    fs::write(&empty_path, r#"{"ui_language": "   "}"#).expect("failed to write empty_lang.json");
+    let loaded_empty = Config::load_from(&empty_path).expect("failed to load config");
+    assert_eq!(
+        loaded_empty.ui_language, "en",
+        "Empty ui_language must normalize to 'en'"
+    );
+}

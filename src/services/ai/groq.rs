@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{utils::format_enhancement_prompt, AiError, AiProvider};
+use super::{AiError, AiProvider, utils::format_enhancement_prompt};
 
 const DEFAULT_GROQ_LLM_MODEL: &str = "openai/gpt-oss-120b";
 const DEFAULT_GROQ_STT_MODEL: &str = "whisper-large-v3-turbo";

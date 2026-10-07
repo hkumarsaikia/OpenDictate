@@ -7,7 +7,7 @@ use opendictate::services::i18n::tr;
 use opendictate::services::storage::StorageService;
 use opendictate::ui::main_window::header::build_header_bar;
 use opendictate::ui::main_window::settings_view::build_settings_view;
-use opendictate::ui::main_window::{build_main_window, MainWindowModel, MainWindowMsg};
+use opendictate::ui::main_window::{MainWindowModel, MainWindowMsg, build_main_window};
 use tempfile::NamedTempFile;
 
 #[test]

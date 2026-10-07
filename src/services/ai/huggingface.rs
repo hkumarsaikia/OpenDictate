@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{utils::format_enhancement_prompt, AiError, AiProvider};
+use super::{AiError, AiProvider, utils::format_enhancement_prompt};
 
 pub const DEFAULT_HUGGINGFACE_LLM_MODEL: &str = "meta-llama/Llama-3.3-70B-Instruct";
 pub const DEFAULT_HUGGINGFACE_STT_MODEL: &str = "openai/whisper-large-v3-turbo";
@@ -140,19 +140,18 @@ impl AiProvider for HuggingFaceProvider {
         }
 
         let body_text = response.text().await?;
-        if let Ok(parsed) = serde_json::from_str::<HuggingFaceAsrResponse>(&body_text) {
-            if let Some(text) = parsed.text {
-                return Ok(text);
-            }
+        if let Ok(parsed) = serde_json::from_str::<HuggingFaceAsrResponse>(&body_text)
+            && let Some(text) = parsed.text
+        {
+            return Ok(text);
         }
 
         // Try parsing as array of results
-        if let Ok(arr) = serde_json::from_str::<Vec<HuggingFaceAsrResponse>>(&body_text) {
-            if let Some(first) = arr.into_iter().next() {
-                if let Some(text) = first.text {
-                    return Ok(text);
-                }
-            }
+        if let Ok(arr) = serde_json::from_str::<Vec<HuggingFaceAsrResponse>>(&body_text)
+            && let Some(first) = arr.into_iter().next()
+            && let Some(text) = first.text
+        {
+            return Ok(text);
         }
 
         Ok(body_text.trim().to_string())
@@ -220,16 +219,14 @@ impl AiProvider for HuggingFaceProvider {
             req = req.header("Authorization", format!("Bearer {}", self.api_key.trim()));
         }
 
-        if let Ok(res) = req.send().await {
-            if res.status().is_success() {
-                if let Ok(parsed) = res.json::<HuggingFaceModelsResponse>().await {
-                    if let Some(entries) = parsed.data {
-                        for entry in entries {
-                            if !models.contains(&entry.id) {
-                                models.push(entry.id);
-                            }
-                        }
-                    }
+        if let Ok(res) = req.send().await
+            && res.status().is_success()
+            && let Ok(parsed) = res.json::<HuggingFaceModelsResponse>().await
+            && let Some(entries) = parsed.data
+        {
+            for entry in entries {
+                if !models.contains(&entry.id) {
+                    models.push(entry.id);
                 }
             }
         }

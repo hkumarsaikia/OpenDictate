@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{utils::default_http_client, utils::format_enhancement_prompt, AiError, AiProvider};
+use super::{AiError, AiProvider, utils::default_http_client, utils::format_enhancement_prompt};
 
 const DEFAULT_OPENAI_LLM_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_OPENAI_STT_MODEL: &str = "whisper-1";

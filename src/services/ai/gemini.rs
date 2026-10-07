@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    utils::{base64_encode, default_http_client, format_enhancement_prompt},
     AiError, AiProvider,
+    utils::{base64_encode, default_http_client, format_enhancement_prompt},
 };
 
 const DEFAULT_GEMINI_MODEL: &str = "gemini-2.0-flash";

@@ -1,5 +1,5 @@
-use opendictate::audio::level::{calculate_5_bar_levels, calculate_rms, LevelSmoother};
-use opendictate::audio::recorder::{encode_pcm_wav, AudioRecorder};
+use opendictate::audio::level::{LevelSmoother, calculate_5_bar_levels, calculate_rms};
+use opendictate::audio::recorder::{AudioRecorder, encode_pcm_wav};
 
 #[test]
 fn test_calculate_rms_silence_and_signals() {

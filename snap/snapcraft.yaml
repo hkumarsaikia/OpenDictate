@@ -2,9 +2,15 @@ name: opendictate
 version: '2.0.0'
 summary: Dictate text with your voice
 description: |
-  OpenDictate is a native Linux voice dictation and AI speech-to-text application.
+  OpenDictate is a desktop voice dictation and speech-to-text application.
   It combines private offline transcription with multi-provider Cloud AI models
   to turn spoken voice into clean, polished text.
+
+license: MIT
+source-code: https://github.com/hkumarsaikia/OpenDictate
+issues: https://github.com/hkumarsaikia/OpenDictate/issues
+website: https://github.com/hkumarsaikia/OpenDictate
+icon: src/ui/assets/brand/opendictate.svg
 
 grade: stable
 confinement: strict
@@ -17,6 +23,8 @@ platforms:
 apps:
   opendictate:
     command: usr/bin/opendictate
+    desktop: usr/share/applications/io.github.opendictate.OpenDictate.desktop
+    common-id: io.github.opendictate.OpenDictate
     extensions: [ gnome ]
     plugs:
       - audio-record
@@ -26,7 +34,6 @@ apps:
       - desktop-legacy
       - wayland
       - x11
-    common-id: io.github.opendictate.OpenDictate
 
 parts:
   alsa-lib:
@@ -45,6 +52,8 @@ parts:
     plugin: rust
     source: .
     rust-channel: stable
+    parse-info:
+      - usr/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml
     build-packages:
       - libgtk-4-dev
       - libadwaita-1-dev
@@ -59,6 +68,7 @@ parts:
       if [ -f $CRAFT_PART_INSTALL/bin/opendictate ]; then
         cp $CRAFT_PART_INSTALL/bin/opendictate $CRAFT_PART_INSTALL/usr/bin/opendictate
       fi
+      install -Dm644 LICENSE $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE
       install -Dm644 data/io.github.opendictate.OpenDictate.desktop $CRAFT_PART_INSTALL/usr/share/applications/io.github.opendictate.OpenDictate.desktop
       install -Dm644 data/io.github.opendictate.OpenDictate.metainfo.xml $CRAFT_PART_INSTALL/usr/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml
       install -Dm644 src/ui/assets/brand/opendictate.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/io.github.opendictate.OpenDictate.svg

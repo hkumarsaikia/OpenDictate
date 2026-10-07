@@ -10,7 +10,14 @@ use std::fs;
 use std::path::Path;
 
 fn read_secret(key_name: &str) -> Option<String> {
-    let path = Path::new("/home/hksaikia/Project/Dictation/secrets/secrets.txt");
+    let env_key = format!("{}_API_KEY", key_name.to_uppercase().replace(' ', "_"));
+    if let Ok(val) = std::env::var(&env_key)
+        && !val.trim().is_empty()
+    {
+        return Some(val.trim().to_string());
+    }
+    let secrets_file = std::env::var("OPENDICTATE_SECRETS_FILE").ok()?;
+    let path = Path::new(&secrets_file);
     if !path.exists() {
         return None;
     }
@@ -111,7 +118,9 @@ async fn test_live_cloudflare_transcribe_and_enhance() {
     };
 
     // Test transcription
-    println!("Testing Cloudflare audio transcription with @cf/openai/whisper (with auto account resolution)...");
+    println!(
+        "Testing Cloudflare audio transcription with @cf/openai/whisper (with auto account resolution)..."
+    );
     let transcribe_res = manager.transcribe(&wav).await;
     match transcribe_res {
         Ok(t) => println!("Cloudflare transcribe output: {:?}", t),
@@ -263,9 +272,11 @@ async fn test_live_fetch_models_for_provider_dynamic() {
         assert!(res.is_ok());
         let models = res.unwrap();
         assert!(!models.is_empty());
-        assert!(models
-            .iter()
-            .any(|m| m.is_free && m.display_label().contains("[Free]")));
+        assert!(
+            models
+                .iter()
+                .any(|m| m.is_free && m.display_label().contains("[Free]"))
+        );
         println!(
             "Dynamic Groq models count: {}, first: {}",
             models.len(),

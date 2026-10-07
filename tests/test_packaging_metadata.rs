@@ -12,12 +12,12 @@ fn extract_top_level_yaml_value(content: &str, key: &str) -> Option<String> {
             continue;
         }
         let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix(key) {
-            if let Some(val) = rest.strip_prefix(':') {
-                let clean_val = val.split('#').next().unwrap_or(val).trim();
-                let v = clean_val.trim_matches('\'').trim_matches('"');
-                return Some(v.to_string());
-            }
+        if let Some(rest) = trimmed.strip_prefix(key)
+            && let Some(val) = rest.strip_prefix(':')
+        {
+            let clean_val = val.split('#').next().unwrap_or(val).trim();
+            let v = clean_val.trim_matches('\'').trim_matches('"');
+            return Some(v.to_string());
         }
     }
     None
@@ -39,18 +39,13 @@ fn extract_yaml_list_under_key(content: &str, key: &str) -> Vec<String> {
             if trimmed == format!("{}:", key) || trimmed.starts_with(&format!("{}:", key)) {
                 collecting = true;
             }
-        } else {
-            // Once collecting, check if we hit a new key at the same or higher indentation level,
-            // or if line starts with `- `
-            if let Some(stripped) = trimmed.strip_prefix("- ") {
-                let raw_item = stripped.trim();
-                let clean_item = raw_item.split('#').next().unwrap_or(raw_item).trim();
-                let item = clean_item.trim_matches('\'').trim_matches('"');
-                items.push(item.to_string());
-            } else if !trimmed.is_empty() && !trimmed.starts_with('-') {
-                // Next key encountered
-                break;
-            }
+        } else if let Some(stripped) = trimmed.strip_prefix("- ") {
+            let raw_item = stripped.trim();
+            let clean_item = raw_item.split('#').next().unwrap_or(raw_item).trim();
+            let item = clean_item.trim_matches('\'').trim_matches('"');
+            items.push(item.to_string());
+        } else if !trimmed.is_empty() && !trimmed.starts_with('-') {
+            break;
         }
     }
 
@@ -85,8 +80,8 @@ fn test_flatpak_manifest_core_attributes() {
     let runtime_version = extract_top_level_yaml_value(&content, "runtime-version")
         .expect("Missing runtime-version in Flatpak manifest");
     assert_eq!(
-        runtime_version, "46",
-        "Flatpak runtime-version must be '46'"
+        runtime_version, "48",
+        "Flatpak runtime-version must be '48'"
     );
 
     let sdk =
@@ -113,13 +108,17 @@ fn test_flatpak_manifest_finish_args() {
         "finish-args must not be empty in Flatpak manifest"
     );
 
-    // Required permissions
+    // Required Flathub-compliant permissions
     let required_args = [
+        "--share=ipc",
         "--socket=wayland",
         "--socket=fallback-x11",
+        "--device=dri",
         "--socket=pulseaudio",
-        "--device=all",
+        "--share=network",
+        "--talk-name=org.kde.StatusNotifierWatcher",
         "--filesystem=xdg-data/opendictate:create",
+        "--filesystem=xdg-config/opendictate:create",
     ];
 
     for &arg in &required_args {
@@ -130,14 +129,19 @@ fn test_flatpak_manifest_finish_args() {
             finish_args
         );
     }
+
+    // Ensure disallowed Flathub linter flags are absent
+    assert!(!finish_args.iter().any(|a| a == "--socket=x11"));
+    assert!(!finish_args.iter().any(|a| a == "--device=all"));
+    assert!(!finish_args.iter().any(|a| a == "--filesystem=home"));
 }
 
 #[test]
 fn test_snapcraft_manifest_core_attributes() {
-    let snap_path = project_root().join("packaging/snap/snapcraft.yaml");
+    let snap_path = project_root().join("snap/snapcraft.yaml");
     assert!(
         snap_path.exists(),
-        "Snapcraft manifest must exist at packaging/snap/snapcraft.yaml"
+        "Snapcraft manifest must exist at snap/snapcraft.yaml"
     );
 
     let content = fs::read_to_string(&snap_path).expect("Failed to read Snapcraft manifest");
@@ -161,7 +165,7 @@ fn test_snapcraft_manifest_core_attributes() {
 
 #[test]
 fn test_snapcraft_manifest_plugs() {
-    let snap_path = project_root().join("packaging/snap/snapcraft.yaml");
+    let snap_path = project_root().join("snap/snapcraft.yaml");
     let content = fs::read_to_string(&snap_path).expect("Failed to read Snapcraft manifest");
 
     let plugs = extract_yaml_list_under_key(&content, "plugs");
@@ -205,36 +209,48 @@ fn test_appstream_metainfo_metadata() {
 
     let content = fs::read_to_string(&metainfo_path).expect("Failed to read AppStream metainfo");
 
-    // Verify Application ID
     assert!(
         content.contains("<id>io.github.opendictate.OpenDictate</id>"),
         "AppStream metadata must specify ID io.github.opendictate.OpenDictate"
     );
-
-    // Verify Binary
     assert!(
         content.contains("<binary>opendictate</binary>"),
         "AppStream metadata must specify binary 'opendictate'"
     );
-
-    // Verify Name
     assert!(
         content.contains("<name>OpenDictate</name>"),
         "AppStream metadata must specify name 'OpenDictate'"
     );
-
-    // Verify Release 2.0.0
     assert!(
         content.contains("<release version=\"2.0.0\""),
         "AppStream metadata must specify release version 2.0.0"
     );
+
+    // Verify all 4 screenshot files referenced in metainfo.xml exist in docs/screenshots/
+    for screenshot_file in [
+        "docs/screenshots/main-window-settings.png",
+        "docs/screenshots/header-menu-popover.png",
+        "docs/screenshots/floating-minibar.png",
+        "docs/screenshots/main-window-light.png",
+    ] {
+        assert!(
+            project_root().join(screenshot_file).exists(),
+            "Screenshot file {} must exist on disk",
+            screenshot_file
+        );
+        assert!(
+            content.contains(screenshot_file),
+            "AppStream metainfo.xml must reference {}",
+            screenshot_file
+        );
+    }
 }
 
 #[test]
 fn test_cross_packaging_consistency() {
     let flatpak_path =
         project_root().join("packaging/flatpak/io.github.opendictate.OpenDictate.yml");
-    let snap_path = project_root().join("packaging/snap/snapcraft.yaml");
+    let snap_path = project_root().join("snap/snapcraft.yaml");
     let metainfo_path = project_root().join("data/io.github.opendictate.OpenDictate.metainfo.xml");
     let cargo_path = project_root().join("Cargo.toml");
 
@@ -258,8 +274,9 @@ fn test_cross_packaging_consistency() {
     assert!(snap_content.contains(&format!("command: usr/bin/{}", expected_binary)));
     assert!(metainfo_content.contains(&format!("<binary>{}</binary>", expected_binary)));
 
-    // Version consistency
+    // Version & Rust 2024 edition consistency
     assert!(cargo_content.contains(&format!("version = \"{}\"", expected_version)));
+    assert!(cargo_content.contains("edition = \"2024\""));
     assert!(snap_content.contains(&format!("version: '{}'", expected_version)));
     assert!(metainfo_content.contains(&format!("<release version=\"{}\"", expected_version)));
 }
@@ -268,7 +285,7 @@ fn test_cross_packaging_consistency() {
 fn test_legacy_tier_sandbox_rules() {
     let flatpak_path =
         project_root().join("packaging/flatpak/io.github.opendictate.OpenDictate.yml");
-    let snap_path = project_root().join("packaging/snap/snapcraft.yaml");
+    let snap_path = project_root().join("snap/snapcraft.yaml");
 
     let flatpak_content = fs::read_to_string(&flatpak_path).unwrap();
     let snap_content = fs::read_to_string(&snap_path).unwrap();
@@ -276,19 +293,22 @@ fn test_legacy_tier_sandbox_rules() {
     let flatpak_finish_args = extract_yaml_list_under_key(&flatpak_content, "finish-args");
     let snap_plugs = extract_yaml_list_under_key(&snap_content, "plugs");
 
-    // Audio on legacy distros (2018-2022 without PipeWire) requires ALSA/device access or PulseAudio socket
+    // Audio & GPU access
     assert!(flatpak_finish_args.contains(&"--socket=pulseaudio".to_string()));
-    assert!(flatpak_finish_args.contains(&"--device=all".to_string()));
+    assert!(flatpak_finish_args.contains(&"--device=dri".to_string()));
     assert!(snap_plugs.contains(&"audio-record".to_string()));
     assert!(snap_plugs.contains(&"audio-playback".to_string()));
 
-    // Display fallback on legacy distros (X11 sessions)
+    // Display fallback on X11 and Wayland sessions
     assert!(flatpak_finish_args.contains(&"--socket=wayland".to_string()));
     assert!(flatpak_finish_args.contains(&"--socket=fallback-x11".to_string()));
     assert!(snap_plugs.contains(&"wayland".to_string()));
     assert!(snap_plugs.contains(&"x11".to_string()));
     assert!(snap_plugs.contains(&"desktop-legacy".to_string()));
 
-    // Persistent storage for offline models and dictionary
+    // Persistent storage for offline models and history
     assert!(flatpak_finish_args.contains(&"--filesystem=xdg-data/opendictate:create".to_string()));
+    assert!(
+        flatpak_finish_args.contains(&"--filesystem=xdg-config/opendictate:create".to_string())
+    );
 }

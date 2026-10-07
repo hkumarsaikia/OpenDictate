@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{utils::default_http_client, utils::format_enhancement_prompt, AiError, AiProvider};
+use super::{AiError, AiProvider, utils::default_http_client, utils::format_enhancement_prompt};
 
 const DEFAULT_CLAUDE_MODEL: &str = "claude-3-5-haiku-20241022";
 
@@ -135,14 +135,12 @@ impl AiProvider for ClaudeProvider {
             .send()
             .await;
 
-        if let Ok(resp) = response {
-            if resp.status().is_success() {
-                if let Ok(models_resp) = resp.json::<ClaudeModelsResponse>().await {
-                    if let Some(data) = models_resp.data {
-                        return Ok(data.into_iter().map(|m| m.id).collect());
-                    }
-                }
-            }
+        if let Ok(resp) = response
+            && resp.status().is_success()
+            && let Ok(models_resp) = resp.json::<ClaudeModelsResponse>().await
+            && let Some(data) = models_resp.data
+        {
+            return Ok(data.into_iter().map(|m| m.id).collect());
         }
 
         // Return curated list of Claude models if endpoint is unavailable

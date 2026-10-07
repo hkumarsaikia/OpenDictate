@@ -11,7 +11,7 @@
 
   <description>
     <p>
-      OpenDictate is a native voice dictation and AI speech-to-text application. It combines private offline transcription with multi-provider Cloud AI models to turn spoken voice into clean, polished text.
+      OpenDictate is a desktop voice dictation and speech-to-text application. It combines private offline transcription with multi-provider Cloud AI models to turn spoken voice into clean, polished text.
     </p>
     <p>
       Features include:
@@ -22,26 +22,34 @@
       <li>Hardware-aware microphone routing across System Default, Headphones, and Handsfree devices</li>
       <li>Floating MiniBar overlay for hands-free dictation across active windows</li>
       <li>Persistent local dictation history with quick clipboard copy and deletion</li>
-      <li>Interface localization across 28 languages with automatic dark and light themes</li>
-      <li>Wayland and X11 text insertion, system tray indicator, and global shortcuts</li>
+      <li>Interface localization across 28 languages with adaptive dark and light themes</li>
+      <li>Desktop text insertion, system tray indicator, and global keyboard shortcuts</li>
     </ul>
   </description>
 
   <launchable type="desktop-id">io.github.opendictate.OpenDictate.desktop</launchable>
 
   <branding>
-    <color type="primary" scheme_preference="light">#d6eff8</color>
-    <color type="primary" scheme_preference="dark">#1c3b4d</color>
+    <color type="primary" scheme_preference="light">#c8dcf4</color>
+    <color type="primary" scheme_preference="dark">#1e3a5f</color>
   </branding>
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/assets/screenshot-main.png</image>
-      <caption>Main configuration window with local and cloud speech model settings</caption>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/screenshots/main-window-settings.png</image>
+      <caption>Main settings window with Cloud AI and offline Whisper configuration</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/assets/screenshot-minibar.png</image>
-      <caption>Floating MiniBar for quick desktop dictation</caption>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/screenshots/header-menu-popover.png</image>
+      <caption>Header menu with 28-language localization and dictation history</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/screenshots/floating-minibar.png</image>
+      <caption>Floating MiniBar overlay with live acoustic waveform and transcript drawer</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/screenshots/main-window-light.png</image>
+      <caption>Adaptive light theme with offline Whisper speech model management</caption>
     </screenshot>
   </screenshots>
 
@@ -70,9 +78,9 @@
   <releases>
     <release version="2.0.0" date="2026-10-02">
       <description>
-        <p>Major release featuring native GTK4 and Libadwaita interface, offline Whisper GGML speech recognition, multi-provider Cloud AI transcription, 28-language localization, and persistent SQLite dictation history.</p>
+        <p>Major release featuring offline Whisper GGML speech recognition, multi-provider Cloud AI transcription, 28-language localization, and persistent dictation history.</p>
         <ul>
-          <li>Native GTK4 and Libadwaita user interface with adaptive dark and light themes</li>
+          <li>Adaptive dark and light user interface themes</li>
           <li>Dual-engine speech recognition supporting offline Whisper models and Cloud AI providers</li>
           <li>Real-time interface localization across 28 languages with Right-to-Left layout support</li>
           <li>In-popover dictation history viewer with clipboard copy and record management</li>

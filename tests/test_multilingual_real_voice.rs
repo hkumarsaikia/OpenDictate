@@ -4,13 +4,20 @@
 //! and Cloud AI providers on authentic human speech in English, German, French, and Spanish.
 
 use opendictate::config::Config;
-use opendictate::services::ai::local_ai::{get_local_model_catalog, LocalAiProvider};
+use opendictate::services::ai::local_ai::{LocalAiProvider, get_local_model_catalog};
 use opendictate::services::ai::{AiManager, AiProvider};
 use std::fs;
 use std::path::Path;
 
 fn read_secret(key_name: &str) -> Option<String> {
-    let path = Path::new("/home/hksaikia/Project/Dictation/secrets/secrets.txt");
+    let env_key = format!("{}_API_KEY", key_name.to_uppercase().replace(' ', "_"));
+    if let Ok(val) = std::env::var(&env_key)
+        && !val.trim().is_empty()
+    {
+        return Some(val.trim().to_string());
+    }
+    let secrets_file = std::env::var("OPENDICTATE_SECRETS_FILE").ok()?;
+    let path = Path::new(&secrets_file);
     if !path.exists() {
         return None;
     }
@@ -32,7 +39,10 @@ fn read_secret(key_name: &str) -> Option<String> {
 async fn test_local_ai_multilingual_real_voice_catalog() {
     let model_path = opendictate::services::ai::local_ai::resolve_model_path("tiny", None);
     if !model_path.exists() {
-        eprintln!("Skipping test_local_ai_multilingual_real_voice_catalog: ggml-tiny.bin not found at {:?}", model_path);
+        eprintln!(
+            "Skipping test_local_ai_multilingual_real_voice_catalog: ggml-tiny.bin not found at {:?}",
+            model_path
+        );
         return;
     }
 

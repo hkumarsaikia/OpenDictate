@@ -330,9 +330,11 @@ fn test_minibar_gtk_widgets_and_states() {
         model.update(MiniBarMsg::SetState(MiniBarState::Idle));
         opendictate::ui::mini_bar::update_minibar_ui(&model, &state_widgets);
         assert!(state_widgets.record_button.is_sensitive());
-        assert!(!state_widgets
-            .record_button
-            .has_css_class("recording-active"));
+        assert!(
+            !state_widgets
+                .record_button
+                .has_css_class("recording-active")
+        );
         assert_eq!(
             state_widgets.record_button.icon_name().unwrap().as_str(),
             "media-record-symbolic"
@@ -351,9 +353,11 @@ fn test_minibar_gtk_widgets_and_states() {
         model.update(MiniBarMsg::SetState(MiniBarState::Recording));
         opendictate::ui::mini_bar::update_minibar_ui(&model, &state_widgets);
         assert!(state_widgets.record_button.is_sensitive());
-        assert!(state_widgets
-            .record_button
-            .has_css_class("recording-active"));
+        assert!(
+            state_widgets
+                .record_button
+                .has_css_class("recording-active")
+        );
         assert_eq!(
             state_widgets.record_button.icon_name().unwrap().as_str(),
             "media-playback-stop-symbolic"
@@ -372,9 +376,11 @@ fn test_minibar_gtk_widgets_and_states() {
         model.update(MiniBarMsg::SetState(MiniBarState::Paused));
         opendictate::ui::mini_bar::update_minibar_ui(&model, &state_widgets);
         assert!(state_widgets.record_button.is_sensitive());
-        assert!(!state_widgets
-            .record_button
-            .has_css_class("recording-active"));
+        assert!(
+            !state_widgets
+                .record_button
+                .has_css_class("recording-active")
+        );
         assert_eq!(
             state_widgets.record_button.icon_name().unwrap().as_str(),
             "media-playback-stop-symbolic"
@@ -393,9 +399,11 @@ fn test_minibar_gtk_widgets_and_states() {
         model.update(MiniBarMsg::SetState(MiniBarState::Processing));
         opendictate::ui::mini_bar::update_minibar_ui(&model, &state_widgets);
         assert!(!state_widgets.record_button.is_sensitive());
-        assert!(!state_widgets
-            .record_button
-            .has_css_class("recording-active"));
+        assert!(
+            !state_widgets
+                .record_button
+                .has_css_class("recording-active")
+        );
         assert!(!state_widgets.pause_button.is_sensitive());
         assert!(!state_widgets.cancel_button.is_sensitive());
         assert!(!state_widgets.visualizer_area.is_visible());
@@ -424,14 +432,18 @@ fn test_minibar_gtk_widgets_and_states() {
                 .as_str(),
             "Settings"
         );
-        assert!(minibar_widgets
-            .drawer_widgets
-            .status_badge
-            .is::<gtk4::Label>());
-        assert!(minibar_widgets
-            .drawer_widgets
-            .clear_button
-            .is::<gtk4::Button>());
+        assert!(
+            minibar_widgets
+                .drawer_widgets
+                .status_badge
+                .is::<gtk4::Label>()
+        );
+        assert!(
+            minibar_widgets
+                .drawer_widgets
+                .clear_button
+                .is::<gtk4::Button>()
+        );
 
         // Initial preview drawer state displays placeholder
         assert_eq!(minibar_widgets.drawer_widgets.text(), "");
@@ -485,9 +497,11 @@ fn test_minibar_recording_guard_with_warning_tooltip() {
         let (_window, minibar_widgets) = opendictate::ui::mini_bar::build_minibar_window();
 
         // 1. Verify warning popover exists on MiniBar
-        assert!(minibar_widgets
-            .warning_tooltip_popover
-            .is::<gtk4::Popover>());
+        assert!(
+            minibar_widgets
+                .warning_tooltip_popover
+                .is::<gtk4::Popover>()
+        );
 
         // 2. Set warning on minibar
         let warning_msg = opendictate::services::ai::PAID_MODEL_UNPAID_PLAN_WARNING;

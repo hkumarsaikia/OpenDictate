@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{utils::default_http_client, utils::format_enhancement_prompt, AiError, AiProvider};
+use super::{AiError, AiProvider, utils::default_http_client, utils::format_enhancement_prompt};
 
 pub const DEFAULT_COHERE_MODEL: &str = "command-r-08-2024";
 

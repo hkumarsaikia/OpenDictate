@@ -183,7 +183,7 @@ pub fn silence_alsa_logging() {
         std::os::raw::c_int,
         *const std::os::raw::c_char,
     );
-    extern "C" {
+    unsafe extern "C" {
         fn snd_lib_error_set_handler(handler: Option<AlsaErrorHandler>) -> std::os::raw::c_int;
     }
     unsafe extern "C" fn noop_handler(
@@ -207,28 +207,26 @@ impl AudioRecorder {
     pub fn new(device_name: Option<String>) -> Result<Self, AudioError> {
         silence_alsa_logging();
         let host = cpal::default_host();
-        if let Some(ref name) = device_name {
-            if name != "System Default"
-                && name != "default"
-                && name != "Headphones"
-                && name != "Handsfree"
-            {
-                if let Ok(devices) = host.input_devices() {
-                    let mut found = false;
-                    let mut any_device = false;
-                    for dev in devices {
-                        any_device = true;
-                        if let Ok(dev_name) = dev.name() {
-                            if dev_name.contains(name) {
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-                    if any_device && !found {
-                        return Err(AudioError::DeviceNotFound(name.clone()));
-                    }
+        if let Some(ref name) = device_name
+            && name != "System Default"
+            && name != "default"
+            && name != "Headphones"
+            && name != "Handsfree"
+            && let Ok(devices) = host.input_devices()
+        {
+            let mut found = false;
+            let mut any_device = false;
+            for dev in devices {
+                any_device = true;
+                if let Ok(dev_name) = dev.name()
+                    && dev_name.contains(name)
+                {
+                    found = true;
+                    break;
                 }
+            }
+            if any_device && !found {
+                return Err(AudioError::DeviceNotFound(name.clone()));
             }
         }
 
@@ -574,10 +572,10 @@ impl AudioRecorder {
                         card_name = rest.trim();
                     } else if t.starts_with("headset-head-unit:") && t.contains("available: yes") {
                         hfp_available = true;
-                    } else if let Some(rest) = t.strip_prefix("Active Profile:") {
-                        if rest.trim().starts_with("a2dp") {
-                            active_is_a2dp = true;
-                        }
+                    } else if let Some(rest) = t.strip_prefix("Active Profile:")
+                        && rest.trim().starts_with("a2dp")
+                    {
+                        active_is_a2dp = true;
                     }
                 }
                 if card_name.starts_with("bluez_card.") && hfp_available && active_is_a2dp {
@@ -610,9 +608,13 @@ impl AudioRecorder {
                     ])
                     .status();
             }
-            std::env::set_var("PULSE_SOURCE", &exclusive_source);
+            unsafe {
+                std::env::set_var("PULSE_SOURCE", &exclusive_source);
+            }
         } else if target_profile == "System Default" || target_profile == "default" {
-            std::env::remove_var("PULSE_SOURCE");
+            unsafe {
+                std::env::remove_var("PULSE_SOURCE");
+            }
         }
 
         let host = cpal::default_host();

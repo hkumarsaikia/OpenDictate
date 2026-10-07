@@ -1169,10 +1169,10 @@ pub fn tr<'a>(key: &'a str, lang: &str) -> &'a str {
     if let Some(val) = lookup(key, lang) {
         return val;
     }
-    if lang != "en" {
-        if let Some(val) = lookup(key, "en") {
-            return val;
-        }
+    if lang != "en"
+        && let Some(val) = lookup(key, "en")
+    {
+        return val;
     }
     key
 }

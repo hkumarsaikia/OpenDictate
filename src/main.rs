@@ -7,7 +7,7 @@ use opendictate::services::hotkey::{HotkeyAction, HotkeyService};
 use opendictate::services::storage::StorageService;
 use opendictate::services::tray::{OpenDictateTray, TrayCallbacks, TrayService};
 use opendictate::ui::main_window::{MainWindowInit, MainWindowModel, MainWindowMsg};
-use opendictate::ui::theme::{sync_theme_with_adwaita, ThemeMode};
+use opendictate::ui::theme::{ThemeMode, sync_theme_with_adwaita};
 use relm4::MessageBroker;
 
 static MAIN_BROKER: MessageBroker<MainWindowMsg> = MessageBroker::new();

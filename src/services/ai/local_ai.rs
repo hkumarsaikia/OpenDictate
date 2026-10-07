@@ -117,10 +117,11 @@ pub fn models_dir() -> PathBuf {
 
 /// Resolves the filesystem path for a given model ID or custom file path.
 pub fn resolve_model_path(model_id: &str, custom_path: Option<&str>) -> PathBuf {
-    if let Some(cp) = custom_path {
-        if !cp.trim().is_empty() && (model_id == "custom" || model_id.is_empty()) {
-            return PathBuf::from(cp);
-        }
+    if let Some(cp) = custom_path
+        && !cp.trim().is_empty()
+        && (model_id == "custom" || model_id.is_empty())
+    {
+        return PathBuf::from(cp);
     }
 
     let catalog = get_local_model_catalog();
@@ -128,10 +129,10 @@ pub fn resolve_model_path(model_id: &str, custom_path: Option<&str>) -> PathBuf 
         return models_dir().join(&info.filename);
     }
 
-    if let Some(cp) = custom_path {
-        if !cp.trim().is_empty() {
-            return PathBuf::from(cp);
-        }
+    if let Some(cp) = custom_path
+        && !cp.trim().is_empty()
+    {
+        return PathBuf::from(cp);
     }
 
     if model_id.ends_with(".bin") {

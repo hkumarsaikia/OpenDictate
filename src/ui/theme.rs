@@ -68,47 +68,47 @@ pub fn ensure_app_icons_registered() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     static REGISTERED: AtomicBool = AtomicBool::new(false);
-    if !REGISTERED.swap(true, Ordering::SeqCst) {
-        if let Some(base_dirs) = directories::BaseDirs::new() {
-            let apps_dir = base_dirs
-                .data_local_dir()
-                .join("icons/hicolor/scalable/apps");
-            if std::fs::create_dir_all(&apps_dir).is_ok() {
-                let _ = std::fs::write(apps_dir.join("opendictate.svg"), SVG_ICON_DARK);
-                let _ = std::fs::write(apps_dir.join("opendictate-dark.svg"), SVG_ICON_DARK);
-                let _ = std::fs::write(apps_dir.join("opendictate-light.svg"), SVG_ICON_LIGHT);
-                let _ = std::fs::write(
-                    apps_dir.join("io.github.opendictate.OpenDictate.svg"),
-                    SVG_ICON_DARK,
-                );
-            }
+    if !REGISTERED.swap(true, Ordering::SeqCst)
+        && let Some(base_dirs) = directories::BaseDirs::new()
+    {
+        let apps_dir = base_dirs
+            .data_local_dir()
+            .join("icons/hicolor/scalable/apps");
+        if std::fs::create_dir_all(&apps_dir).is_ok() {
+            let _ = std::fs::write(apps_dir.join("opendictate.svg"), SVG_ICON_DARK);
+            let _ = std::fs::write(apps_dir.join("opendictate-dark.svg"), SVG_ICON_DARK);
+            let _ = std::fs::write(apps_dir.join("opendictate-light.svg"), SVG_ICON_LIGHT);
+            let _ = std::fs::write(
+                apps_dir.join("io.github.opendictate.OpenDictate.svg"),
+                SVG_ICON_DARK,
+            );
         }
     }
 
     if gtk4::is_initialized_main_thread() {
         static ICON_THEME_REGISTERED: AtomicBool = AtomicBool::new(false);
-        if !ICON_THEME_REGISTERED.swap(true, Ordering::SeqCst) {
-            if let Some(display) = gtk4::gdk::Display::default() {
-                let icon_theme = gtk4::IconTheme::for_display(&display);
-                let manifest_brand =
-                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ui/assets/brand");
-                if manifest_brand.exists() {
-                    icon_theme.add_search_path(&manifest_brand);
-                    let icons_sub = manifest_brand.join("icons");
-                    if icons_sub.exists() {
-                        icon_theme.add_search_path(&icons_sub);
-                    }
+        if !ICON_THEME_REGISTERED.swap(true, Ordering::SeqCst)
+            && let Some(display) = gtk4::gdk::Display::default()
+        {
+            let icon_theme = gtk4::IconTheme::for_display(&display);
+            let manifest_brand =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ui/assets/brand");
+            if manifest_brand.exists() {
+                icon_theme.add_search_path(&manifest_brand);
+                let icons_sub = manifest_brand.join("icons");
+                if icons_sub.exists() {
+                    icon_theme.add_search_path(&icons_sub);
                 }
-                if let Some(base_dirs) = directories::BaseDirs::new() {
-                    let data_dir = base_dirs.data_local_dir();
-                    let user_icons = data_dir.join("icons");
-                    if user_icons.exists() {
-                        icon_theme.add_search_path(&user_icons);
-                    }
-                    let user_apps = data_dir.join("icons/hicolor/scalable/apps");
-                    if user_apps.exists() {
-                        icon_theme.add_search_path(&user_apps);
-                    }
+            }
+            if let Some(base_dirs) = directories::BaseDirs::new() {
+                let data_dir = base_dirs.data_local_dir();
+                let user_icons = data_dir.join("icons");
+                if user_icons.exists() {
+                    icon_theme.add_search_path(&user_icons);
+                }
+                let user_apps = data_dir.join("icons/hicolor/scalable/apps");
+                if user_apps.exists() {
+                    icon_theme.add_search_path(&user_apps);
                 }
             }
         }

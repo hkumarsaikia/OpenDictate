@@ -1,18 +1,16 @@
 app-id: io.github.opendictate.OpenDictate
 runtime: org.gnome.Platform
-runtime-version: '46'
+runtime-version: '48'
 sdk: org.gnome.Sdk
 command: opendictate
 
 finish-args:
+  - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
-  - --share=ipc
-  # Direct ALSA /dev/snd/* device access is permitted as an acoustic hardware fallback on headless/minimal systems that do not run PulseAudio/PipeWire portals
-  - --device=all
+  - --device=dri
   - --socket=pulseaudio
   - --share=network
-  - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.kde.StatusNotifierWatcher
   - --filesystem=xdg-data/opendictate:create
   - --filesystem=xdg-config/opendictate:create
@@ -44,6 +42,7 @@ modules:
     build-commands:
       - cargo build --release --verbose
       - install -Dm755 target/release/opendictate /app/bin/opendictate
+      - install -Dm644 LICENSE /app/share/licenses/io.github.opendictate.OpenDictate/LICENSE
       - install -Dm644 data/io.github.opendictate.OpenDictate.desktop /app/share/applications/io.github.opendictate.OpenDictate.desktop
       - install -Dm644 data/io.github.opendictate.OpenDictate.metainfo.xml /app/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml
       - install -Dm644 src/ui/assets/brand/opendictate.svg /app/share/icons/hicolor/scalable/apps/io.github.opendictate.OpenDictate.svg

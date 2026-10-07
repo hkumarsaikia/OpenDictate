@@ -1,5 +1,6 @@
 use opendictate::config::Config;
 use opendictate::services::ai::{
+    AiError, AiManager, AiProvider,
     cerebras::CerebrasProvider,
     claude::ClaudeProvider,
     cohere::CohereProvider,
@@ -9,7 +10,6 @@ use opendictate::services::ai::{
     nvidia::NvidiaProvider,
     openai::OpenAiProvider,
     opencode::OpenCodeProvider,
-    AiError, AiManager, AiProvider,
 };
 
 #[test]
@@ -80,9 +80,11 @@ fn test_ai_manager_supported_providers() {
 fn test_provider_models_listing_and_free_tags() {
     let groq_models = get_provider_models("groq");
     assert!(!groq_models.is_empty());
-    assert!(groq_models
-        .iter()
-        .any(|m| m.is_free && m.display_label().contains("[Free]")));
+    assert!(
+        groq_models
+            .iter()
+            .any(|m| m.is_free && m.display_label().contains("[Free]"))
+    );
 
     let nvidia_models = get_provider_models("nvidia");
     assert!(!nvidia_models.is_empty());
@@ -94,9 +96,11 @@ fn test_provider_models_listing_and_free_tags() {
 
     let opencode_models = get_provider_models("opencode");
     assert!(!opencode_models.is_empty());
-    assert!(opencode_models
-        .iter()
-        .any(|m| m.id.contains("kimi") || m.id.contains("glm")));
+    assert!(
+        opencode_models
+            .iter()
+            .any(|m| m.id.contains("kimi") || m.id.contains("glm"))
+    );
 
     let cohere_models = get_provider_models("cohere");
     assert!(!cohere_models.is_empty());
@@ -325,7 +329,7 @@ fn test_is_model_free_heuristics() {
 
 #[tokio::test]
 async fn test_fetch_models_missing_api_key() {
-    use opendictate::services::ai::{fetch_models_for_provider, AiError};
+    use opendictate::services::ai::{AiError, fetch_models_for_provider};
 
     let res = fetch_models_for_provider("groq", "").await;
     assert!(matches!(res, Err(AiError::MissingApiKey)));
@@ -339,12 +343,14 @@ async fn test_live_fetch_with_secrets() {
     use opendictate::services::ai::fetch_models_for_provider;
     use std::fs;
 
-    let secrets_path = "secrets/secrets.txt";
-    if !std::path::Path::new(secrets_path).exists() {
+    let Ok(secrets_path) = std::env::var("OPENDICTATE_SECRETS_FILE") else {
+        return;
+    };
+    if !std::path::Path::new(&secrets_path).exists() {
         return;
     }
 
-    let content = fs::read_to_string(secrets_path).unwrap_or_default();
+    let content = fs::read_to_string(&secrets_path).unwrap_or_default();
     let mut keys = std::collections::HashMap::new();
     for line in content.lines() {
         let line = line.trim();
@@ -415,7 +421,7 @@ async fn test_live_fetch_with_secrets() {
 
 #[test]
 fn test_clean_free_suffix_and_single_free_display_label() {
-    use opendictate::services::ai::{clean_free_suffix, ModelInfo};
+    use opendictate::services::ai::{ModelInfo, clean_free_suffix};
 
     assert_eq!(
         clean_free_suffix("Apodex: Apodex 1.1 Mini (free)"),
@@ -457,8 +463,8 @@ fn test_clean_free_suffix_and_single_free_display_label() {
 #[test]
 fn test_model_audio_capability_and_paid_plan_validation() {
     use opendictate::services::ai::{
-        evaluate_model_selection_warning, ModelInfo, AUDIO_UNSUPPORTED_WARNING,
-        PAID_MODEL_UNPAID_PLAN_WARNING,
+        AUDIO_UNSUPPORTED_WARNING, ModelInfo, PAID_MODEL_UNPAID_PLAN_WARNING,
+        evaluate_model_selection_warning,
     };
 
     let free_audio = ModelInfo::with_details(

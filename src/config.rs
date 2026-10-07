@@ -87,6 +87,12 @@ impl From<serde_json::Error> for ConfigError {
 impl Config {
     /// Returns the default path to the configuration file (`~/.config/opendictate/config.json`).
     pub fn default_path() -> PathBuf {
+        if let Ok(custom) = std::env::var("OPENDICTATE_CONFIG_PATH") {
+            let trimmed = custom.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed);
+            }
+        }
         if let Some(base_dirs) = directories::BaseDirs::new() {
             base_dirs
                 .config_dir()
@@ -97,10 +103,24 @@ impl Config {
         }
     }
 
+    /// Ensures `ui_language` is a valid supported language code, defaulting to `"en"` (English).
+    pub fn normalize_language(&mut self) {
+        let trimmed = self.ui_language.trim();
+        let is_valid = crate::services::i18n::LANGUAGES
+            .iter()
+            .any(|l| l.code == trimmed);
+        if is_valid {
+            self.ui_language = trimmed.to_string();
+        } else {
+            self.ui_language = "en".to_string();
+        }
+    }
+
     /// Loads configuration from the specified path.
     pub fn load_from(path: &Path) -> Result<Config, ConfigError> {
         let content = std::fs::read_to_string(path)?;
-        let config: Config = serde_json::from_str(&content)?;
+        let mut config: Config = serde_json::from_str(&content)?;
+        config.normalize_language();
         Ok(config)
     }
 
@@ -139,10 +159,10 @@ impl Config {
 
     /// Saves configuration to the specified path, creating any missing parent directories.
     pub fn save_to(&self, path: &Path) -> Result<(), ConfigError> {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(self)?;
         std::fs::write(path, content)?;

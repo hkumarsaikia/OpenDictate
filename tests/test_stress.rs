@@ -1,7 +1,7 @@
 use opendictate::audio::level::{calculate_5_bar_levels, calculate_rms};
 use opendictate::audio::recorder::{encode_pcm_wav, resample_to_16k};
-use opendictate::services::ai::local_ai::{is_model_installed, LocalAiProvider};
 use opendictate::services::ai::AiProvider;
+use opendictate::services::ai::local_ai::{LocalAiProvider, is_model_installed};
 
 #[test]
 fn test_resampler_rate_variance_stress() {
@@ -153,7 +153,7 @@ async fn test_whisper_thread_scaling_and_constraint_stress() {
             threads
         );
 
-        if let (Some(_), Some(ref wav_bytes)) = (&installed_model, &audio_wav) {
+        if let (Some(_), Some(wav_bytes)) = (&installed_model, &audio_wav) {
             println!(
                 "Testing Whisper inference with model '{}' and {} threads...",
                 model_id, threads
@@ -775,9 +775,9 @@ fn test_full_ui_ux_i18n_and_model_switching_stress() {
     use gtk4::prelude::*;
     use libadwaita::prelude::*;
     use opendictate::config::Config;
-    use opendictate::services::i18n::{is_rtl, tr, LANGUAGES};
+    use opendictate::services::i18n::{LANGUAGES, is_rtl, tr};
     use opendictate::services::storage::StorageService;
-    use opendictate::ui::main_window::{header, settings_view, MainWindowModel, MainWindowMsg};
+    use opendictate::ui::main_window::{MainWindowModel, MainWindowMsg, header, settings_view};
     use opendictate::ui::mini_bar::build_minibar_window;
     use opendictate::ui::theme::ThemeMode;
 
@@ -793,7 +793,11 @@ fn test_full_ui_ux_i18n_and_model_switching_stress() {
     let (_header_bar, header_widgets) = header::build_header_bar(&config, &storage);
     let (_settings_page, settings_widgets) = settings_view::build_settings_view(&config);
     let (_mb_win, minibar_widgets) = build_minibar_window();
-    let mut model = MainWindowModel::new(config.clone(), storage.clone());
+    let mut model = MainWindowModel::new_with_config_path(
+        config.clone(),
+        storage.clone(),
+        temp_dir.path().join("stress_config.json"),
+    );
 
     // 1. Cycle through all supported desktop Linux languages and verify live retranslation
     assert!(LANGUAGES.len() >= 25);
@@ -811,6 +815,9 @@ fn test_full_ui_ux_i18n_and_model_switching_stress() {
             assert!(!is_rtl(lang.code));
         }
     }
+    model.update(MainWindowMsg::SetUiLanguage("en".to_string()));
+    header_widgets.retranslate("en");
+    settings_widgets.retranslate("en");
 
     // 2. Cycle through all Cloud AI providers and verify Usage Limit gating & warning tooltip hooks
     for (provider_idx, prov) in [

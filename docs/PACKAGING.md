@@ -56,11 +56,11 @@ Linux distributions feature varying library release cycles and long-term support
 
 #### Tier 2: Universal Sandboxed Targets (2018–2022 & Immutable Desktops)
 - **Target Systems:** Legacy LTS and interim releases including Ubuntu 18.04 LTS–23.04; Linux Mint 19.x, 20.x, 21.x, and LMDE 3–6; Debian 10 (Buster), 11 (Bullseye), and stock Debian 12 (Bookworm); Fedora 28–38; Kali Linux 2018.1–2023.2; Manjaro 18.x–22.x; openSUSE Leap 15.0–15.6; elementary OS 5.x (Juno/Hera), 6.x (Odin/Jólnir), and 7.x (Horus); Zorin OS 15.x, 16.x, and 17.x; Linux Lite 4.x, 5.x, and 6.x; as well as immutable/atomic desktop and handheld gaming systems (**SteamOS 2.195 Brewmaster & SteamOS 3.0–3.7 Holo**, Fedora Silverblue, openSUSE MicroOS / Aeon).
-- **Packaging Format:** Universal sandboxed bundles: **Flatpak (`org.gnome.Platform//46`)** and **Snap (`core24`)**.
+- **Packaging Format:** Universal sandboxed bundles: **Flatpak (`org.gnome.Platform//48`)** and **Snap (`core24`)**.
 - **Backward Compatibility Mechanism:**
-  - **Runtime Encapsulation:** Older distribution repositories only ship GTK 3 (3.22/3.24) or early GTK 4.6, lacking Libadwaita. The Flatpak GNOME 46 runtime bundles GTK 4.16+, Libadwaita 1.6+, and glibc 2.38+ inside an isolated sandbox, allowing systems as old as Ubuntu 18.04 (Linux kernel ≥ 4.15) to run OpenDictate out of the box without altering host system libraries.
+  - **Runtime Encapsulation:** Older distribution repositories only ship GTK 3 (3.22/3.24) or early GTK 4.6, lacking Libadwaita. The Flatpak GNOME 48 runtime bundles GTK 4.18+, Libadwaita 1.7+, and glibc 2.40+ inside an isolated sandbox, allowing systems as old as Ubuntu 18.04 (Linux kernel ≥ 4.15) to run OpenDictate out of the box without altering host system libraries.
   - **Snap Core24 Base:** The Snap package is constructed upon Canonical's Ubuntu 24.04 LTS (`core24`) foundation with GNOME extension plugins, enabling clean compatibility across all system configurations equipped with `snapd`.
-  - **Permission Portals:** Display connectivity is provided through Wayland and X11 fallback sockets (`--socket=wayland`, `--socket=fallback-x11`); microphone recording is routed through PulseAudio/ALSA interfaces (`--socket=pulseaudio`, `--device=all`, `plugs: [audio-record, audio-playback]`); and application data persistence (offline Whisper models and the SQLite history database `history.db`) is maintained via dedicated XDG data roots (`--filesystem=xdg-data/opendictate:create`).
+  - **Permission Portals:** Display connectivity is provided through Wayland and X11 fallback sockets (`--socket=wayland`, `--socket=fallback-x11`); microphone recording is routed through PulseAudio/PipeWire interfaces (`--socket=pulseaudio`, `--device=dri`, `plugs: [audio-record, audio-playback]`); and application data persistence (offline Whisper models and the SQLite history database `history.db`) is maintained via dedicated XDG data roots (`--filesystem=xdg-data/opendictate:create`, `--filesystem=xdg-config/opendictate:create`).
 
 ---
 
@@ -72,35 +72,35 @@ Linux distributions feature varying library release cycles and long-term support
 | | **24.10 / 25.04 / 25.10** (Oracular / Plucky / Questing) | 2024–2025 | **Tier 1 (Native)** | Native `.deb`, Snap, Source | Ubuntu 24.04+ ABI & repo verification | GTK 4.16+, Libadwaita 1.6+, glibc 2.40+ |
 | | **24.04 LTS** (Noble Numbat) | 2024 | **Tier 1 (Native)** | Native `.deb`, Snap (`core24`), Source | `docker.io/library/ubuntu:24.04` (Podman) | GTK 4.14+, Libadwaita 1.5+, glibc 2.39 |
 | | **23.10** (Mantic Minotaur) | 2023 | **Tier 1 (Native)** | Native `.deb`, Flatpak, Snap |GTK 4.12 / Libadwaita 1.4 verification | GTK 4.12, Libadwaita 1.4, glibc 2.38 |
-| | **22.04 LTS / 22.10 / 23.04** (Jammy / Kinetic / Lunar) | 2022–2023 | **Tier 2 (Sandbox)** | Flatpak & Snap | `docker.io/library/ubuntu:22.04` (Podman / Manifest) | GTK 4.6–4.10 (host) → GNOME 46 (sandbox) |
-| | **20.04 LTS / 20.10 / 21.04 / 21.10** (Focal–Impish) | 2020–2021 | **Tier 2 (Sandbox)** | Flatpak & Snap | Kernel & sandbox verification | GTK 3.24 (host) → GNOME 46 (sandbox) |
-| | **18.04 LTS / 18.10 / 19.04 / 19.10** (Bionic–Eoan) | 2018–2019 | **Tier 2 (Sandbox)** | Flatpak & Snap | Kernel (≥ 4.15) & sandbox verification | GTK 3.22–3.24 (host) → GNOME 46 (sandbox) |
+| | **22.04 LTS / 22.10 / 23.04** (Jammy / Kinetic / Lunar) | 2022–2023 | **Tier 2 (Sandbox)** | Flatpak & Snap | `docker.io/library/ubuntu:22.04` (Podman / Manifest) | GTK 4.6–4.10 (host) → GNOME 48 (sandbox) |
+| | **20.04 LTS / 20.10 / 21.04 / 21.10** (Focal–Impish) | 2020–2021 | **Tier 2 (Sandbox)** | Flatpak & Snap | Kernel & sandbox verification | GTK 3.24 (host) → GNOME 48 (sandbox) |
+| | **18.04 LTS / 18.10 / 19.04 / 19.10** (Bionic–Eoan) | 2018–2019 | **Tier 2 (Sandbox)** | Flatpak & Snap | Kernel (≥ 4.15) & sandbox verification | GTK 3.22–3.24 (host) → GNOME 48 (sandbox) |
 | **2. Linux Mint** | **Mint 22 / 22.1 / 22.2 / 22.3** (Wilma / Xia / Zara) & **LMDE 7** | 2024–2026 | **Tier 1 (Native)** | Native `.deb` & Flatpak | `docker.io/linuxmintd/mint22-amd64` (Podman) | GTK 4.14+, Libadwaita 1.5+ (Ubuntu 24.04 / Debian 13 base) |
-| | **Mint 21 / 21.1 / 21.2 / 21.3** (Vanessa / Vera / Victoria / Virginia) & **LMDE 6** | 2022–2024 | **Tier 2 (Sandbox)** | Flatpak (Flathub built-in) | Manifest & Flathub verification | GTK 4.6–4.10 (host) → GNOME 46 (sandbox) |
-| | **Mint 20 / 20.1 / 20.2 / 20.3** (Ulyana / Ulyssa / Uma / Una) & **LMDE 5** | 2020–2022 | **Tier 2 (Sandbox)** | Flatpak | Flathub & sandbox verification | GTK 3.24 (host) → GNOME 46 (sandbox) |
-| | **Mint 19 / 19.1 / 19.2 / 19.3** (Tara / Tessa / Tina / Tricia) & **LMDE 3 / LMDE 4** | 2018–2020 | **Tier 2 (Sandbox)** | Flatpak | Flathub & sandbox verification | GTK 3.22–3.24 (host) → GNOME 46 (sandbox) |
+| | **Mint 21 / 21.1 / 21.2 / 21.3** (Vanessa / Vera / Victoria / Virginia) & **LMDE 6** | 2022–2024 | **Tier 2 (Sandbox)** | Flatpak (Flathub built-in) | Manifest & Flathub verification | GTK 4.6–4.10 (host) → GNOME 48 (sandbox) |
+| | **Mint 20 / 20.1 / 20.2 / 20.3** (Ulyana / Ulyssa / Uma / Una) & **LMDE 5** | 2020–2022 | **Tier 2 (Sandbox)** | Flatpak | Flathub & sandbox verification | GTK 3.24 (host) → GNOME 48 (sandbox) |
+| | **Mint 19 / 19.1 / 19.2 / 19.3** (Tara / Tessa / Tina / Tricia) & **LMDE 3 / LMDE 4** | 2018–2020 | **Tier 2 (Sandbox)** | Flatpak | Flathub & sandbox verification | GTK 3.22–3.24 (host) → GNOME 48 (sandbox) |
 | **3. Debian** | **Debian 13** (Trixie) & **Sid** | 2025–2026 | **Tier 1 (Native)** | Native `.deb` & Source | `docker.io/library/debian:trixie` (Podman) | GTK 4.16+, Libadwaita 1.6+, glibc 2.40 |
 | | **Debian 12** (Bookworm) | 2023 | **Tier 1 / Tier 2** | Flatpak (Stock) / Native `.deb` (Trixie overlay) | `docker.io/library/debian:bookworm` (Podman) | Stock: GTK 4.10, Libadwaita 1.3 (Stock users: Flatpak; Native build requires Debian 13 Trixie overlay/backports for GTK 4.12+ and Libadwaita 1.5+) |
-| | **Debian 11** (Bullseye) | 2021 | **Tier 2 (Sandbox)** | Flatpak & Snap | Archive & manifest verification | GTK 3.24 (host) → GNOME 46 (sandbox) |
-| | **Debian 10** (Buster) | 2019 | **Tier 2 (Sandbox)** | Flatpak & Snap | Archive & manifest verification | GTK 3.24 (host) → GNOME 46 (sandbox) |
+| | **Debian 11** (Bullseye) | 2021 | **Tier 2 (Sandbox)** | Flatpak & Snap | Archive & manifest verification | GTK 3.24 (host) → GNOME 48 (sandbox) |
+| | **Debian 10** (Buster) | 2019 | **Tier 2 (Sandbox)** | Flatpak & Snap | Archive & manifest verification | GTK 3.24 (host) → GNOME 48 (sandbox) |
 | **4. Arch Linux** | **Arch Linux Rolling** (`2018.01`–`2026.10`) | 2018–2026 | **Tier 1 (Native)** | Native AUR / Cargo / Flatpak | `docker.io/library/archlinux:latest` (Podman) | Rolling bleeding-edge GTK 4.16+, Libadwaita 1.6+ |
 | **5. Fedora** | **Fedora 39 / 40 / 41 / 42 / 43 / 44** Workstation | 2023–2026 | **Tier 1 (Native)** | Native RPM, Flatpak, Cargo | `docker.io/library/fedora:40` (Podman) | GTK 4.12–4.18+, Libadwaita 1.4–1.7+, glibc 2.38+ |
-| | **Fedora 28 / 29 / 30 / 31 / 32 / 33 / 34 / 35 / 36 / 37 / 38** & **Silverblue** | 2018–2023 | **Tier 2 (Sandbox)** | Flatpak | Flathub & OSTree verification | GTK 3.22–4.10 (host) → GNOME 46 (sandbox) |
+| | **Fedora 28 / 29 / 30 / 31 / 32 / 33 / 34 / 35 / 36 / 37 / 38** & **Silverblue** | 2018–2023 | **Tier 2 (Sandbox)** | Flatpak | Flathub & OSTree verification | GTK 3.22–4.10 (host) → GNOME 48 (sandbox) |
 | **6. Kali Linux** | **Kali Rolling `2023.3`–`2026.3`** (`2023.3`, `2023.4`, `2024.1`–`2024.4`, `2025.1`–`2025.4`, `2026.1`–`2026.3`) | 2023–2026 | **Tier 1 (Native)** | Native `.deb`, Cargo, Flatpak | `docker.io/kalilinux/kali-rolling:latest` (Podman) | Debian Testing base: GTK 4.14–4.18+, Libadwaita 1.5–1.7+ |
-| | **Kali Rolling `2018.1`–`2023.2`** (`2018.1`–`2018.4`, `2019.1`–`2019.4`, `2020.1`–`2020.4`, `2021.1`–`2021.4`, `2022.1`–`2022.4`, `2023.1`–`2023.2`) | 2018–2023 | **Tier 2 (Sandbox)** | Flatpak | Sandbox & Debian archive verification | GTK 3.22–4.10 (host) → GNOME 46 (sandbox) |
+| | **Kali Rolling `2018.1`–`2023.2`** (`2018.1`–`2018.4`, `2019.1`–`2019.4`, `2020.1`–`2020.4`, `2021.1`–`2021.4`, `2022.1`–`2022.4`, `2023.1`–`2023.2`) | 2018–2023 | **Tier 2 (Sandbox)** | Flatpak | Sandbox & Debian archive verification | GTK 3.22–4.10 (host) → GNOME 48 (sandbox) |
 | **7. Manjaro** | **Manjaro `23.0`–`26.0`** (`23.0 Uranos`, `23.1 Vulcan`, `24.0 Wynsdey`, `24.1 Xahea`, `24.2 Yonada`, `25.0 Zetar`, `26.0`) | 2023–2026 | **Tier 1 (Native)** | Native Pacman / AUR / Flatpak | `docker.io/manjarolinux/base:latest` (Podman) | Arch rolling base: GTK 4.14+, Libadwaita 1.5+ |
-| | **Manjaro `18.0`–`22.1`** (`18.0 Illyria`, `18.1 Juhraya`, `19.0 Kyria`, `20.0 Lysia`, `20.1 Mikah`, `20.2 Nibia`, `21.0 Ornara`, `21.1 Pahvo`, `21.2 Qonos`, `21.3 Ruah`, `22.0 Sikaris`, `22.1 Talos`) | 2018–2023 | **Tier 1 (Rolling Upgrade) / Tier 2** | Pacman Upgrade or Flatpak | Arch/Manjaro rolling & Flatpak verification | Rolling upgrade to Tier 1 or GNOME 46 (sandbox) |
+| | **Manjaro `18.0`–`22.1`** (`18.0 Illyria`, `18.1 Juhraya`, `19.0 Kyria`, `20.0 Lysia`, `20.1 Mikah`, `20.2 Nibia`, `21.0 Ornara`, `21.1 Pahvo`, `21.2 Qonos`, `21.3 Ruah`, `22.0 Sikaris`, `22.1 Talos`) | 2018–2023 | **Tier 1 (Rolling Upgrade) / Tier 2** | Pacman Upgrade or Flatpak | Arch/Manjaro rolling & Flatpak verification | Rolling upgrade to Tier 1 or GNOME 48 (sandbox) |
 | **8. openSUSE** | **Tumbleweed** (`2018`–`2026` Rolling) & **Leap 16.0** | 2018–2026 | **Tier 1 (Native)** | Native Zypper RPM & Flatpak | `docker.io/opensuse/tumbleweed:latest` (Podman) | Rolling bleeding-edge GTK 4.16+, Libadwaita 1.6+ |
-| | **Leap 15.0 / 15.1 / 15.2 / 15.3 / 15.4 / 15.5 / 15.6** & **MicroOS / Aeon** | 2018–2025 | **Tier 2 (Sandbox)** | Flatpak | Flathub & transactional-update verification | SLE 15 glibc 2.26–2.38 → GNOME 46 (sandbox) |
+| | **Leap 15.0 / 15.1 / 15.2 / 15.3 / 15.4 / 15.5 / 15.6** & **MicroOS / Aeon** | 2018–2025 | **Tier 2 (Sandbox)** | Flatpak | Flathub & transactional-update verification | SLE 15 glibc 2.26–2.38 → GNOME 48 (sandbox) |
 | **9. elementary OS**| **elementary OS 8.0 / 8.1** (Circe) | 2024–2026 | **Tier 1 (Native)** | Native `.deb` & Flatpak | Ubuntu 24.04 LTS container verification | GTK 4.14+, Libadwaita 1.5+, PipeWire |
-| | **elementary OS 5.0** (Juno), **5.1** (Hera), **6.0** (Odin), **6.1** (Jólnir), **7.0 / 7.1** (Horus) | 2018–2024 | **Tier 2 (Sandbox)** | Flatpak (AppCenter / Sideload) | Ubuntu 18.04 / 20.04 / 22.04 base verification | GTK 3.22–4.6 (host) → GNOME 46 (sandbox) |
+| | **elementary OS 5.0** (Juno), **5.1** (Hera), **6.0** (Odin), **6.1** (Jólnir), **7.0 / 7.1** (Horus) | 2018–2024 | **Tier 2 (Sandbox)** | Flatpak (AppCenter / Sideload) | Ubuntu 18.04 / 20.04 / 22.04 base verification | GTK 3.22–4.6 (host) → GNOME 48 (sandbox) |
 | **10. Zorin OS** | **Zorin OS 18** | 2025–2026 | **Tier 1 (Native)** | Native `.deb` & Flatpak | Ubuntu 24.04 LTS container verification | GTK 4.14+, Libadwaita 1.5+ |
-| | **Zorin OS 17 / 17.1 / 17.2 / 17.3** | 2023–2025 | **Tier 2 (Sandbox)** | Flatpak (Flathub pre-installed) | Ubuntu 22.04 base verification | GTK 4.6 (host) → GNOME 46 (sandbox) |
-| | **Zorin OS 16 / 16.1 / 16.2 / 16.3** | 2021–2023 | **Tier 2 (Sandbox)** | Flatpak & Snap | Ubuntu 20.04 base verification | GTK 3.24 (host) → GNOME 46 (sandbox) |
-| | **Zorin OS 15 / 15.1 / 15.2 / 15.3** | 2019–2020 | **Tier 2 (Sandbox)** | Flatpak & Snap | Ubuntu 18.04 base verification | GTK 3.22 (host) → GNOME 46 (sandbox) |
+| | **Zorin OS 17 / 17.1 / 17.2 / 17.3** | 2023–2025 | **Tier 2 (Sandbox)** | Flatpak (Flathub pre-installed) | Ubuntu 22.04 base verification | GTK 4.6 (host) → GNOME 48 (sandbox) |
+| | **Zorin OS 16 / 16.1 / 16.2 / 16.3** | 2021–2023 | **Tier 2 (Sandbox)** | Flatpak & Snap | Ubuntu 20.04 base verification | GTK 3.24 (host) → GNOME 48 (sandbox) |
+| | **Zorin OS 15 / 15.1 / 15.2 / 15.3** | 2019–2020 | **Tier 2 (Sandbox)** | Flatpak & Snap | Ubuntu 18.04 base verification | GTK 3.22 (host) → GNOME 48 (sandbox) |
 | **11. Linux Lite** | **Linux Lite 7.0 / 7.2 / 7.4** (Galena) | 2024–2026 | **Tier 1 (Native)** | Native `.deb` & Flatpak | Ubuntu 24.04 LTS container verification | GTK 4.14+, Libadwaita 1.5+ |
-| | **Linux Lite 4.0 / 4.2 / 4.4 / 4.6 / 4.8** (Diamond), **5.0 / 5.2 / 5.4 / 5.6 / 5.8** (Emerald), **6.0 / 6.2 / 6.4 / 6.6** (Fluorite) | 2018–2024 | **Tier 2 (Sandbox)** | Flatpak & Snap | Ubuntu 18.04 / 20.04 / 22.04 base verification | GTK 3.22–4.6 (host) → GNOME 46 (sandbox) |
-| **12. SteamOS** | **SteamOS 3.0 / 3.1 / 3.2 / 3.3 / 3.4 / 3.5 / 3.6 / 3.7** (Holo) & **2.195** (Brewmaster) | 2018–2026 | **Tier 2 (Sandbox)** | Flatpak (`flatpak --user` on Steam Deck LCD Aerith & OLED Sephiroth Zen 2 APU) | Arch Linux / Flatpak sandbox verification | Read-only `/usr` rootfs, PipeWire, GNOME 46 (sandbox) |
+| | **Linux Lite 4.0 / 4.2 / 4.4 / 4.6 / 4.8** (Diamond), **5.0 / 5.2 / 5.4 / 5.6 / 5.8** (Emerald), **6.0 / 6.2 / 6.4 / 6.6** (Fluorite) | 2018–2024 | **Tier 2 (Sandbox)** | Flatpak & Snap | Ubuntu 18.04 / 20.04 / 22.04 base verification | GTK 3.22–4.6 (host) → GNOME 48 (sandbox) |
+| **12. SteamOS** | **SteamOS 3.0 / 3.1 / 3.2 / 3.3 / 3.4 / 3.5 / 3.6 / 3.7** (Holo) & **2.195** (Brewmaster) | 2018–2026 | **Tier 2 (Sandbox)** | Flatpak (`flatpak --user` on Steam Deck LCD Aerith & OLED Sephiroth Zen 2 APU) | Arch Linux / Flatpak sandbox verification | Read-only `/usr` rootfs, PipeWire, GNOME 48 (sandbox) |
 | **Gentoo Linux** | **Gentoo Rolling** | 2018–2026 | **Tier 1 (Native)** | Native Portage / Binhost | `docker.io/gentoo/stage3:latest` (Podman) | Rolling bleeding-edge GTK 4.16+, Libadwaita 1.6+ |
 
 ---
@@ -160,15 +160,15 @@ sudo dnf install -y flatpak flatpak-builder
 sudo pacman -S --needed flatpak flatpak-builder
 ```
 
-Install the GNOME 46 runtime and Freedesktop SDK extensions:
+Install the GNOME 48 runtime and Freedesktop SDK extensions:
 
 ```bash
 flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.repo
 flatpak install -y flathub \
-    org.gnome.Platform//46 \
-    org.gnome.Sdk//46 \
-    org.freedesktop.Sdk.Extension.rust-stable//23.08 \
-    org.freedesktop.Sdk.Extension.llvm18//23.08
+    org.gnome.Platform//48 \
+    org.gnome.Sdk//48 \
+    org.freedesktop.Sdk.Extension.rust-stable//24.08 \
+    org.freedesktop.Sdk.Extension.llvm18//24.08
 ```
 
 #### Building & Installing Locally
@@ -193,7 +193,7 @@ flatpak build-bundle repo opendictate.flatpak io.github.opendictate.OpenDictate
 
 ### 4.2 Canonical Snap (`snapcraft`)
 
-The Snapcraft recipe is defined at `packaging/snap/snapcraft.yaml` with strict confinement and `core24` base.
+The Snapcraft recipe is defined at `snap/snapcraft.yaml` with strict confinement and `core24` base.
 
 #### Prerequisites
 Install Snapcraft and configure LXD:

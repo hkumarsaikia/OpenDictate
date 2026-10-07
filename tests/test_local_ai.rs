@@ -210,12 +210,7 @@ async fn test_real_local_ai_transcription() {
     }
 
     let provider = LocalAiProvider::new(Some("tiny.en".to_string()));
-    let jfk_path = "tests/fixtures/jfk.wav";
-    let wav_path = if std::path::Path::new(jfk_path).exists() {
-        jfk_path
-    } else {
-        "recordings/meeting_1790413136_Level_Test.wav"
-    };
+    let wav_path = "tests/fixtures/jfk.wav";
     let audio_bytes = std::fs::read(wav_path).expect("Failed to read sample WAV");
     assert!(!audio_bytes.is_empty());
 
@@ -229,14 +224,12 @@ async fn test_real_local_ai_transcription() {
         "Transcription result should not be empty"
     );
 
-    if wav_path == jfk_path {
-        let lower = result.to_lowercase();
-        assert!(
-            lower.contains("fellow americans") || lower.contains("country"),
-            "Expected speech transcription to contain recognized words, got: {}",
-            result
-        );
-    }
+    let lower = result.to_lowercase();
+    assert!(
+        lower.contains("fellow americans") || lower.contains("country"),
+        "Expected speech transcription to contain recognized words, got: {}",
+        result
+    );
 
     // Also test end-to-end AiManager local routing
     let config = opendictate::config::Config {
@@ -289,12 +282,7 @@ async fn test_unlisted_custom_model_transcription() {
     );
     assert_eq!(provider.threads, 0);
 
-    let jfk_path = "tests/fixtures/jfk.wav";
-    let wav_path = if std::path::Path::new(jfk_path).exists() {
-        jfk_path
-    } else {
-        "recordings/meeting_1790413136_Level_Test.wav"
-    };
+    let wav_path = "tests/fixtures/jfk.wav";
     let audio_bytes = std::fs::read(wav_path).expect("Failed to read audio file");
     assert!(!audio_bytes.is_empty());
 
@@ -308,14 +296,12 @@ async fn test_unlisted_custom_model_transcription() {
         "Transcribed text must not be empty"
     );
 
-    if wav_path == jfk_path {
-        let lower = transcribed.to_lowercase();
-        assert!(
-            lower.contains("fellow americans") || lower.contains("country"),
-            "Expected unlisted custom model to transcribe JFK speech, got: {}",
-            transcribed
-        );
-    }
+    let lower = transcribed.to_lowercase();
+    assert!(
+        lower.contains("fellow americans") || lower.contains("country"),
+        "Expected unlisted custom model to transcribe JFK speech, got: {}",
+        transcribed
+    );
 
     // Also verify AiManager routing with custom model path and auto threads
     let config = opendictate::config::Config {

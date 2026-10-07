@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{utils::default_http_client, utils::format_enhancement_prompt, AiError, AiProvider};
+use super::{AiError, AiProvider, utils::default_http_client, utils::format_enhancement_prompt};
 
 const DEFAULT_OLLAMA_MODEL: &str = "llama3.2";
 const DEFAULT_OLLAMA_HOST: &str = "http://localhost:11434";

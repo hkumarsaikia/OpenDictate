@@ -3,13 +3,13 @@
 pub mod drawer;
 pub mod visualizer;
 
-use drawer::{build_preview_drawer, PreviewDrawerWidgets};
+use drawer::{PreviewDrawerWidgets, build_preview_drawer};
 use gtk4::prelude::*;
-use relm4::component::{ComponentParts, SimpleComponent};
 use relm4::ComponentSender;
+use relm4::component::{ComponentParts, SimpleComponent};
 use std::cell::RefCell;
 use std::rc::Rc;
-use visualizer::{build_visualizer_drawing_area, VisualizerState};
+use visualizer::{VisualizerState, build_visualizer_drawing_area};
 
 /// High-level lifecycle state of the MiniBar floating pill.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -847,10 +847,10 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     let drawer_w_clone = drawer_widgets.clone();
     copy_button.connect_clicked(move |_| {
         let text = drawer_w_clone.text();
-        if !text.is_empty() {
-            if let Ok(mut clip) = arboard::Clipboard::new() {
-                let _ = clip.set_text(text);
-            }
+        if !text.is_empty()
+            && let Ok(mut clip) = arboard::Clipboard::new()
+        {
+            let _ = clip.set_text(text);
         }
         copy_btn_clone.set_icon_name("object-select-symbolic");
         let btn = copy_btn_clone.clone();

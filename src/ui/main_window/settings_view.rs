@@ -2,10 +2,10 @@
 
 use crate::audio::recorder::AudioRecorder;
 use crate::config::Config;
+use crate::services::ai::ModelInfo;
 use crate::services::ai::local_ai::{
     download_local_model, get_local_model_catalog, is_model_installed, resolve_model_path,
 };
-use crate::services::ai::ModelInfo;
 use gtk4::gio::prelude::*;
 use gtk4::prelude::*;
 use libadwaita::prelude::*;
@@ -574,11 +574,11 @@ impl LocalModelPickerComponents {
                 self.list_box.select_row(Some(&row));
                 self.list_box.emit_by_name::<()>("row-activated", &[&row]);
             }
-        } else if let Some(idx) = catalog.iter().position(|m| m.id == model_id) {
-            if let Some(row) = self.list_box.row_at_index(idx as i32) {
-                self.list_box.select_row(Some(&row));
-                self.list_box.emit_by_name::<()>("row-activated", &[&row]);
-            }
+        } else if let Some(idx) = catalog.iter().position(|m| m.id == model_id)
+            && let Some(row) = self.list_box.row_at_index(idx as i32)
+        {
+            self.list_box.select_row(Some(&row));
+            self.list_box.emit_by_name::<()>("row-activated", &[&row]);
         }
     }
 }
@@ -1109,19 +1109,18 @@ pub fn update_local_model_status_ui(
 ) {
     if model_id == "custom" {
         download_button.set_visible(false);
-        if let Some(cp) = custom_path {
-            if !cp.trim().is_empty() {
-                if let Ok(m) = std::fs::metadata(cp) {
-                    if m.is_file() && m.len() > 0 {
-                        let size_mb = m.len() as f64 / 1_048_576.0;
-                        status_label.set_text(&format!("Installed ({:.1} MB)", size_mb));
-                        status_label.remove_css_class("dim-label");
-                        status_label.add_css_class("success");
-                        delete_button.set_visible(true);
-                        return;
-                    }
-                }
-            }
+        if let Some(cp) = custom_path
+            && !cp.trim().is_empty()
+            && let Ok(m) = std::fs::metadata(cp)
+            && m.is_file()
+            && m.len() > 0
+        {
+            let size_mb = m.len() as f64 / 1_048_576.0;
+            status_label.set_text(&format!("Installed ({:.1} MB)", size_mb));
+            status_label.remove_css_class("dim-label");
+            status_label.add_css_class("success");
+            delete_button.set_visible(true);
+            return;
         }
         status_label.set_text("Not installed");
         status_label.remove_css_class("success");
@@ -1518,28 +1517,28 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
                         let mid_expected = m.id.clone();
 
                         gtk4::glib::spawn_future_local(async move {
-                            if let Ok(validation) = rx.await {
-                                if *sel_mod_check.borrow() == mid_expected {
-                                    let changed =
-                                        *active_warn_async.borrow() != validation.warning_message;
-                                    *active_warn_async.borrow_mut() =
-                                        validation.warning_message.clone();
-                                    if let Some(cb) = warn_cb_async.0.borrow().as_ref() {
-                                        cb(if cloud_sw_async.is_active() {
-                                            validation.warning_message.clone()
-                                        } else {
-                                            None
-                                        });
-                                    }
-                                    if changed {
-                                        if let Some(ref msg) = validation.warning_message {
-                                            show_warning_tooltip_with_revealer(
-                                                &pop_async, &rev_async, &lbl_async, &gen_async, msg,
-                                            );
-                                        } else {
-                                            rev_async.set_reveal_child(false);
-                                            pop_async.popdown();
-                                        }
+                            if let Ok(validation) = rx.await
+                                && *sel_mod_check.borrow() == mid_expected
+                            {
+                                let changed =
+                                    *active_warn_async.borrow() != validation.warning_message;
+                                *active_warn_async.borrow_mut() =
+                                    validation.warning_message.clone();
+                                if let Some(cb) = warn_cb_async.0.borrow().as_ref() {
+                                    cb(if cloud_sw_async.is_active() {
+                                        validation.warning_message.clone()
+                                    } else {
+                                        None
+                                    });
+                                }
+                                if changed {
+                                    if let Some(ref msg) = validation.warning_message {
+                                        show_warning_tooltip_with_revealer(
+                                            &pop_async, &rev_async, &lbl_async, &gen_async, msg,
+                                        );
+                                    } else {
+                                        rev_async.set_reveal_child(false);
+                                        pop_async.popdown();
                                     }
                                 }
                             }
@@ -1827,19 +1826,13 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
             None::<&gtk4::Window>,
             None::<&gtk4::gio::Cancellable>,
             move |res| {
-                if let Ok(file) = res {
-                    if let Some(path) = file.path() {
-                        let path_str = path.to_string_lossy().to_string();
-                        *cp.borrow_mut() = Some(path_str.clone());
-                        row.set_subtitle(&path_str);
-                        update_local_model_status_ui(
-                            "custom",
-                            Some(&path_str),
-                            &st,
-                            &btn,
-                            &del_btn,
-                        );
-                    }
+                if let Ok(file) = res
+                    && let Some(path) = file.path()
+                {
+                    let path_str = path.to_string_lossy().to_string();
+                    *cp.borrow_mut() = Some(path_str.clone());
+                    row.set_subtitle(&path_str);
+                    update_local_model_status_ui("custom", Some(&path_str), &st, &btn, &del_btn);
                 }
             },
         );

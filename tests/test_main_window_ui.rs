@@ -5,7 +5,7 @@ use libadwaita::prelude::*;
 use opendictate::config::Config;
 use opendictate::services::storage::StorageService;
 use opendictate::ui::main_window::{MainWindowInit, MainWindowModel, MainWindowMsg};
-use opendictate::ui::theme::{get_current_theme_mode, sync_theme_with_adwaita, ThemeMode};
+use opendictate::ui::theme::{ThemeMode, get_current_theme_mode, sync_theme_with_adwaita};
 use tempfile::NamedTempFile;
 
 #[test]
@@ -169,6 +169,7 @@ fn test_main_window_minibar_integration() {
     let tmp = NamedTempFile::new().unwrap();
     let storage = StorageService::new(tmp.path()).unwrap();
     let config = Config::default();
+    let cfg_tmp = NamedTempFile::new().unwrap();
 
     // Verify MainWindowInit defaults
     let init = MainWindowInit::new(config.clone(), storage.clone());
@@ -176,7 +177,8 @@ fn test_main_window_minibar_integration() {
     assert!(init.show_dashboard);
 
     // Verify model responds to minibar toggle
-    let mut model = MainWindowModel::new(config, storage);
+    let mut model =
+        MainWindowModel::new_with_config_path(config, storage, cfg_tmp.path().to_path_buf());
     assert!(!model.is_minibar_visible());
 
     model.set_minibar_visible(true);
@@ -194,7 +196,9 @@ fn test_main_window_dictation_lifecycle_events() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     let storage = StorageService::new(tmp.path()).unwrap();
     let config = Config::default();
-    let mut model = MainWindowModel::new(config, storage);
+    let cfg_tmp = tempfile::NamedTempFile::new().unwrap();
+    let mut model =
+        MainWindowModel::new_with_config_path(config, storage, cfg_tmp.path().to_path_buf());
 
     model.update(MainWindowMsg::DictationStatus("Recording...".to_string()));
     assert_eq!(model.dictation_status(), "Recording...");
@@ -337,9 +341,11 @@ fn test_white_and_dark_theme_ui_classes_and_icons() {
             "Select Tone"
         );
         assert!(mb_widgets.visualizer_area.tooltip_text().is_none());
-        assert!(mb_widgets
-            .record_button
-            .has_css_class("minibar-record-button"));
+        assert!(
+            mb_widgets
+                .record_button
+                .has_css_class("minibar-record-button")
+        );
         assert!(mb_widgets.record_button.has_css_class("suggested-action"));
         assert!(mb_widgets.record_button.has_css_class("circular"));
     }
@@ -383,12 +389,14 @@ fn test_model_picker_gating_and_hover_card_visibility() {
         );
         assert!(!widgets.model_row.is_activatable());
         assert!(!widgets.picker_components.dropdown_button.is_visible());
-        assert!(widgets
-            .picker_components
-            .status_label
-            .text()
-            .as_str()
-            .contains("Groq API key"));
+        assert!(
+            widgets
+                .picker_components
+                .status_label
+                .text()
+                .as_str()
+                .contains("Groq API key")
+        );
         assert!(widgets.current_models.borrow().is_empty());
 
         // 2b. Pasting invalid non-nvapi key into NVIDIA must reject with prefix requirement
@@ -403,12 +411,14 @@ fn test_model_picker_gating_and_hover_card_visibility() {
         );
         assert!(!widgets.model_row.is_activatable());
         assert!(!widgets.picker_components.dropdown_button.is_visible());
-        assert!(widgets
-            .picker_components
-            .status_label
-            .text()
-            .as_str()
-            .contains("nvapi-"));
+        assert!(
+            widgets
+                .picker_components
+                .status_label
+                .text()
+                .as_str()
+                .contains("nvapi-")
+        );
         assert!(widgets.current_models.borrow().is_empty());
 
         // 2c. Pasting NVIDIA key into Groq must immediately reject
@@ -423,12 +433,14 @@ fn test_model_picker_gating_and_hover_card_visibility() {
         );
         assert!(!widgets.model_row.is_activatable());
         assert!(!widgets.picker_components.dropdown_button.is_visible());
-        assert!(widgets
-            .picker_components
-            .status_label
-            .text()
-            .as_str()
-            .contains("NVIDIA NIM API key"));
+        assert!(
+            widgets
+                .picker_components
+                .status_label
+                .text()
+                .as_str()
+                .contains("NVIDIA NIM API key")
+        );
         assert!(widgets.current_models.borrow().is_empty());
 
         // 2d. Pasting Hugging Face token into Cerebras must immediately reject
@@ -443,12 +455,14 @@ fn test_model_picker_gating_and_hover_card_visibility() {
         );
         assert!(!widgets.model_row.is_activatable());
         assert!(!widgets.picker_components.dropdown_button.is_visible());
-        assert!(widgets
-            .picker_components
-            .status_label
-            .text()
-            .as_str()
-            .contains("Hugging Face"));
+        assert!(
+            widgets
+                .picker_components
+                .status_label
+                .text()
+                .as_str()
+                .contains("Hugging Face")
+        );
         assert!(widgets.current_models.borrow().is_empty());
 
         // 3. When a valid format API key is entered, placeholder text immediately clears and downward arrow appears
@@ -510,12 +524,14 @@ fn test_model_picker_gating_and_hover_card_visibility() {
         assert!(!widgets.picker_components.detail_popover.is_visible());
 
         // Right-side status label is set to selected model display label
-        assert!(widgets
-            .picker_components
-            .status_label
-            .text()
-            .as_str()
-            .contains("Gemini 1.5 Flash"));
+        assert!(
+            widgets
+                .picker_components
+                .status_label
+                .text()
+                .as_str()
+                .contains("Gemini 1.5 Flash")
+        );
 
         // Hover card update works and formats fields accurately
         opendictate::ui::main_window::settings_view::update_hover_card(
@@ -545,10 +561,12 @@ fn test_model_picker_gating_and_hover_card_visibility() {
 
         // 6. Verify single background: card_box must NOT have "card" class
         assert!(!widgets.picker_components.card_box.has_css_class("card"));
-        assert!(widgets
-            .picker_components
-            .card_box
-            .has_css_class("model-detail-card"));
+        assert!(
+            widgets
+                .picker_components
+                .card_box
+                .has_css_class("model-detail-card")
+        );
 
         // 7. Verify no white checkmark icon exists on any model row
         if let Some(first_row) = widgets
@@ -556,19 +574,17 @@ fn test_model_picker_gating_and_hover_card_visibility() {
             .list_box
             .first_child()
             .and_then(|c| c.downcast::<gtk4::ListBoxRow>().ok())
-        {
-            if let Some(h_box) = first_row
+            && let Some(h_box) = first_row
                 .child()
                 .and_then(|c| c.downcast::<gtk4::Box>().ok())
-            {
-                let mut child = h_box.first_child();
-                while let Some(c) = child {
-                    assert!(
-                        !c.is::<gtk4::Image>(),
-                        "Model row should not contain checkmark or image icon"
-                    );
-                    child = c.next_sibling();
-                }
+        {
+            let mut child = h_box.first_child();
+            while let Some(c) = child {
+                assert!(
+                    !c.is::<gtk4::Image>(),
+                    "Model row should not contain checkmark or image icon"
+                );
+                child = c.next_sibling();
             }
         }
     }
@@ -745,14 +761,18 @@ fn test_settings_local_ai_controls_and_status_ui() {
         assert!(widgets.local_model_row.has_css_class("local-model-combo"));
 
         // Verify local model picker detail hover card structure and narrowed broadness
-        assert!(widgets
-            .local_picker_components
-            .card_box
-            .has_css_class("model-detail-card"));
-        assert!(widgets
-            .local_picker_components
-            .card_box
-            .has_css_class("local-model-detail-card"));
+        assert!(
+            widgets
+                .local_picker_components
+                .card_box
+                .has_css_class("model-detail-card")
+        );
+        assert!(
+            widgets
+                .local_picker_components
+                .card_box
+                .has_css_class("local-model-detail-card")
+        );
         assert_eq!(
             widgets.local_picker_components.card_box.width_request(),
             200
@@ -786,18 +806,22 @@ fn test_settings_local_ai_controls_and_status_ui() {
             widgets.local_picker_components.val_params.text().as_str(),
             "39M"
         );
-        assert!(widgets
-            .local_picker_components
-            .val_langs
-            .text()
-            .as_str()
-            .contains("English"));
-        assert!(widgets
-            .local_picker_components
-            .val_speed
-            .text()
-            .as_str()
-            .contains("Fast"));
+        assert!(
+            widgets
+                .local_picker_components
+                .val_langs
+                .text()
+                .as_str()
+                .contains("English")
+        );
+        assert!(
+            widgets
+                .local_picker_components
+                .val_speed
+                .text()
+                .as_str()
+                .contains("Fast")
+        );
 
         // Verify License and Source rows were removed (only 4 rows remain in card_box: Model, Parameters, Languages, Speed)
         let mut card_row_count = 0;

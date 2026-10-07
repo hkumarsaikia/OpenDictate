@@ -109,15 +109,21 @@ fn test_seed_demo_dictations_if_empty() {
         .list_dictations()
         .expect("failed to list dictations");
     assert_eq!(seeded.len(), 3);
-    assert!(seeded
-        .iter()
-        .any(|d| d.processed_text.contains("OpenDictate")));
-    assert!(seeded
-        .iter()
-        .any(|d| d.processed_text.contains("whisper.cpp")));
-    assert!(seeded
-        .iter()
-        .any(|d| d.processed_text.contains("quick brown fox")));
+    assert!(
+        seeded
+            .iter()
+            .any(|d| d.processed_text.contains("OpenDictate"))
+    );
+    assert!(
+        seeded
+            .iter()
+            .any(|d| d.processed_text.contains("whisper.cpp"))
+    );
+    assert!(
+        seeded
+            .iter()
+            .any(|d| d.processed_text.contains("quick brown fox"))
+    );
 
     // Second call is idempotent (does not duplicate)
     storage

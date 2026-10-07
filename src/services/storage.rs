@@ -92,10 +92,10 @@ impl StorageService {
     /// Initializes a new StorageService connected to SQLite at `db_path`.
     /// Creates parent directories and schema tables if they do not exist.
     pub fn new(db_path: &Path) -> Result<Self, StorageError> {
-        if let Some(parent) = db_path.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = db_path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
         }
 
         let conn = rusqlite::Connection::open(db_path)?;

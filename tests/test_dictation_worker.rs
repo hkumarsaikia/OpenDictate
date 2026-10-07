@@ -152,8 +152,8 @@ fn test_dictation_worker_no_speech_detected_and_level_reset() {
 
 #[tokio::test]
 async fn test_audio_level_forwarder_pause_resume_lifecycle() {
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     let (level_tx, mut level_rx) = tokio::sync::mpsc::channel::<[f32; 5]>(100);
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<DictationWorkerOutput>(100);
@@ -271,11 +271,11 @@ fn test_dictation_worker_stop_and_cancel_lifecycle() {
         let mut started_again = false;
         let start_wait2 = std::time::Instant::now();
         while start_wait2.elapsed() < std::time::Duration::from_millis(500) {
-            if let Ok(msg) = out_rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                if matches!(msg, DictationWorkerOutput::RecordingStarted) {
-                    started_again = true;
-                    break;
-                }
+            if let Ok(msg) = out_rx.recv_timeout(std::time::Duration::from_millis(100))
+                && matches!(msg, DictationWorkerOutput::RecordingStarted)
+            {
+                started_again = true;
+                break;
             }
         }
         if started_again {
@@ -284,11 +284,11 @@ fn test_dictation_worker_stop_and_cancel_lifecycle() {
             let mut cancelled = false;
             let cancel_wait = std::time::Instant::now();
             while cancel_wait.elapsed() < std::time::Duration::from_millis(500) {
-                if let Ok(msg) = out_rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                    if matches!(msg, DictationWorkerOutput::RecordingCancelled) {
-                        cancelled = true;
-                        break;
-                    }
+                if let Ok(msg) = out_rx.recv_timeout(std::time::Duration::from_millis(100))
+                    && matches!(msg, DictationWorkerOutput::RecordingCancelled)
+                {
+                    cancelled = true;
+                    break;
                 }
             }
             assert!(
