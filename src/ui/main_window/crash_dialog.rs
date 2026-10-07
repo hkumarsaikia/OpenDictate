@@ -103,8 +103,8 @@ fn ensure_crash_dialog_css() {
             .crash-warning-banner {
                 background-color: alpha(@warning_bg_color, 0.16);
                 border: 1px solid alpha(@warning_bg_color, 0.40);
-                border-radius: 12px;
-                padding: 12px 14px;
+                border-radius: 10px;
+                padding: 8px 12px;
             }
             .crash-warning-icon {
                 color: @warning_color;
@@ -115,12 +115,12 @@ fn ensure_crash_dialog_css() {
             }
             .crash-editor-view {
                 font-family: monospace;
-                font-size: 9.5pt;
-                padding: 10px;
+                font-size: 9pt;
+                padding: 8px;
             }
             .crash-status-banner {
                 border-radius: 10px;
-                padding: 10px 12px;
+                padding: 8px 10px;
             }
             .crash-status-progress {
                 background-color: alpha(@accent_bg_color, 0.14);
@@ -153,8 +153,8 @@ pub fn build_crash_report_window(
 
     let window = libadwaita::Window::builder()
         .title("Unexpected Crash Detected — OpenDictate")
-        .default_width(660)
-        .default_height(580)
+        .default_width(520)
+        .default_height(410)
         .modal(true)
         .build();
 
@@ -166,43 +166,34 @@ pub fn build_crash_report_window(
     let header_bar = libadwaita::HeaderBar::builder()
         .title_widget(&libadwaita::WindowTitle::new(
             "Unexpected Crash Detected",
-            "Review, edit, and send the diagnostic report",
+            "",
         ))
         .build();
     toolbar_view.add_top_bar(&header_bar);
 
-    let root_box = gtk4::Box::new(gtk4::Orientation::Vertical, 12);
-    root_box.set_margin_top(14);
-    root_box.set_margin_bottom(14);
-    root_box.set_margin_start(18);
-    root_box.set_margin_end(18);
+    let root_box = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+    root_box.set_margin_top(10);
+    root_box.set_margin_bottom(12);
+    root_box.set_margin_start(14);
+    root_box.set_margin_end(14);
 
     // 1. Top explanation banner
-    let banner_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+    let banner_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
     banner_box.add_css_class("crash-warning-banner");
 
     let warn_icon = gtk4::Image::from_icon_name("dialog-warning-symbolic");
-    warn_icon.set_pixel_size(28);
-    warn_icon.set_valign(gtk4::Align::Start);
+    warn_icon.set_pixel_size(20);
+    warn_icon.set_valign(gtk4::Align::Center);
     warn_icon.add_css_class("crash-warning-icon");
     banner_box.append(&warn_icon);
 
-    let banner_text_box = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
     let banner_heading = gtk4::Label::builder()
         .label("OpenDictate Recovered from an Unexpected Crash")
         .halign(gtk4::Align::Start)
+        .valign(gtk4::Align::Center)
         .css_classes(vec!["heading".to_string()])
         .build();
-    let banner_sub = gtk4::Label::builder()
-        .label("The crash report below is fully editable. You can add notes about what happened or remove any details before clicking \"Send Crash Report\". Home paths (~) and API keys are automatically redacted.")
-        .halign(gtk4::Align::Start)
-        .wrap(true)
-        .xalign(0.0)
-        .css_classes(vec!["caption".to_string(), "dim-label".to_string()])
-        .build();
-    banner_text_box.append(&banner_heading);
-    banner_text_box.append(&banner_sub);
-    banner_box.append(&banner_text_box);
+    banner_box.append(&banner_heading);
     root_box.append(&banner_box);
 
     // 2. Editable Title Row
@@ -228,18 +219,13 @@ pub fn build_crash_report_window(
         .hexpand(true)
         .css_classes(vec!["caption-heading".to_string()])
         .build();
-    let editable_badge = gtk4::Label::builder()
-        .label("Editable Text")
-        .css_classes(vec!["caption".to_string(), "dim-label".to_string()])
-        .build();
     editor_header_box.append(&editor_label);
-    editor_header_box.append(&editable_badge);
     root_box.append(&editor_header_box);
 
     let scrolled = gtk4::ScrolledWindow::builder()
         .vexpand(true)
         .hexpand(true)
-        .min_content_height(230)
+        .min_content_height(150)
         .css_classes(vec!["crash-editor-frame".to_string()])
         .build();
 
@@ -248,10 +234,10 @@ pub fn build_crash_report_window(
         .cursor_visible(true)
         .monospace(true)
         .wrap_mode(gtk4::WrapMode::WordChar)
-        .top_margin(10)
-        .bottom_margin(10)
-        .left_margin(12)
-        .right_margin(12)
+        .top_margin(8)
+        .bottom_margin(8)
+        .left_margin(10)
+        .right_margin(10)
         .css_classes(vec!["crash-editor-view".to_string()])
         .build();
     report_text_view.set_monospace(true);

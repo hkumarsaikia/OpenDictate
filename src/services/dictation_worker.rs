@@ -152,6 +152,10 @@ impl Worker for DictationWorker {
                 }
                 let (level_tx, mut level_rx) = tokio::sync::mpsc::channel::<[f32; 5]>(100);
                 if let Err(e) = self.recorder.start_recording(level_tx) {
+                    crate::services::crash_reporter::CrashReporter::record_event(
+                        "AudioCapture",
+                        &format!("Failed to start microphone stream: {}", e),
+                    );
                     let _ = sender.output(DictationWorkerOutput::Error(format!(
                         "Failed to start recording: {}",
                         e
@@ -255,6 +259,10 @@ impl Worker for DictationWorker {
                 let wav_bytes = match self.recorder.stop() {
                     Ok(bytes) => bytes,
                     Err(e) => {
+                        crate::services::crash_reporter::CrashReporter::record_event(
+                            "AudioCapture",
+                            &format!("Audio stop error: {}", e),
+                        );
                         let _ = sender.output(DictationWorkerOutput::AudioLevel(0.0));
                         let _ = sender.output(DictationWorkerOutput::Error(format!(
                             "Audio stop error: {}",
@@ -271,6 +279,14 @@ impl Worker for DictationWorker {
                 ));
 
                 if wav_bytes.is_empty() || wav_bytes.len() <= 44 {
+                    crate::services::crash_reporter::CrashReporter::record_event(
+                        "AudioCapture",
+                        &format!(
+                            "No speech / 0 audio frames captured ({} bytes over {:.2}s)",
+                            wav_bytes.len(),
+                            duration
+                        ),
+                    );
                     let _ = sender.output(DictationWorkerOutput::AudioLevel(0.0));
                     let _ = sender.output(DictationWorkerOutput::StatusMessage(
                         "No speech detected".to_string(),
@@ -288,12 +304,20 @@ impl Worker for DictationWorker {
                     let raw_result = ai.transcribe(&wav_bytes).await;
                     match raw_result {
                         Err(e) => {
+                            crate::services::crash_reporter::CrashReporter::record_event(
+                                "AIEngine",
+                                &format!("Transcription failed: {}", e),
+                            );
                             let _ = sender_clone
                                 .output(DictationWorkerOutput::Error(format!("AI error: {}", e)));
                         }
                         Ok(raw_text) => {
                             let raw_trimmed = raw_text.trim().to_string();
                             if raw_trimmed.is_empty() {
+                                crate::services::crash_reporter::CrashReporter::record_event(
+                                    "AIEngine",
+                                    "Transcription returned empty text",
+                                );
                                 let _ = sender_clone.output(DictationWorkerOutput::AudioLevel(0.0));
                                 let _ = sender_clone.output(DictationWorkerOutput::StatusMessage(
                                     "No speech detected".to_string(),
@@ -306,9 +330,13 @@ impl Worker for DictationWorker {
                             let enhanced_text = if tone.eq_ignore_ascii_case("Raw") {
                                 raw_trimmed.clone()
                             } else {
-                                ai.enhance(&raw_trimmed, &tone)
-                                    .await
-                                    .unwrap_or_else(|_| raw_trimmed.clone())
+                                ai.enhance(&raw_trimmed, &tone).await.unwrap_or_else(|e| {
+                                    crate::services::crash_reporter::CrashReporter::record_event(
+                                        "AIEngine",
+                                        &format!("Enhancement fallback due to error: {}", e),
+                                    );
+                                    raw_trimmed.clone()
+                                })
                             };
 
                             let _ = storage.insert_dictation(

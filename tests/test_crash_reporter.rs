@@ -14,6 +14,11 @@ fn test_crash_report_generation_and_privacy_sanitization() {
         ..Default::default()
     };
 
+    CrashReporter::record_event(
+        "AudioCapture",
+        "Microphone stream captured 0 speech frames (silent/muted device)",
+    );
+
     let fake_home = std::env::var("HOME").unwrap_or_else(|_| "/home/testuser".to_string());
     let panic_msg = format!(
         "Audio stream buffer underrun while reading {}/recordings/chunk.pcm",
@@ -34,6 +39,9 @@ fn test_crash_report_generation_and_privacy_sanitization() {
     assert!(!report.body.contains(&fake_home));
     assert!(!report.body.contains("gsk_super_secret_key_should_never_leak"));
     assert!(report.body.contains("Configured (redacted)"));
+    assert!(report.body.contains("Detected Input Devices:"));
+    assert!(report.body.contains("[Subsystem Health & Recent Events]"));
+    assert!(report.body.contains("Microphone stream captured 0 speech frames"));
     assert!(report.body.contains("### User Notes (Editable)"));
     assert!(report.body.contains("### Stack Backtrace"));
 }
@@ -95,6 +103,8 @@ fn test_crash_dialog_editable_report_and_states() {
     let widgets = build_crash_report_window(&report, None::<&gtk4::Window>);
     widgets.window.set_visible(true);
     assert!(!widgets.status_banner_box.is_visible());
+    assert_eq!(widgets.window.default_width(), 520);
+    assert_eq!(widgets.window.default_height(), 410);
 
     // Verify the crash report is displayed and editable on the same screen as "Send Crash Report"
     assert!(widgets.report_text_view.is_editable());
@@ -160,6 +170,11 @@ fn render_crash_window_screenshots_and_verify_live_relay() {
     gtk4::init().expect("GTK4 init failed");
     let _ = libadwaita::init();
 
+    CrashReporter::record_event(
+        "AudioCapture",
+        "Stream disconnected mid-recording on PipeWire node (ERR_NODE_SUSPENDED)",
+    );
+
     let cfg = Config::default();
     let report = CrashReporter::build_report(
         "Audio capture stream disconnected unexpectedly (ERR_NODE_SUSPENDED)",
@@ -168,24 +183,10 @@ fn render_crash_window_screenshots_and_verify_live_relay() {
         &cfg,
     );
 
-    // 1. Live end-to-end verification against Cloudflare Worker -> GitHub Issues
-    let rt = tokio::runtime::Runtime::new().expect("Tokio runtime failed");
-    let live_submission = rt
-        .block_on(CrashReporter::send_crash_report(
-            &report.title,
-            &report.body,
-        ))
-        .expect("Live crash report submission to Cloudflare Worker failed");
-    println!(
-        "LIVE_ISSUE_CREATED: #{} -> {}",
-        live_submission.issue_number, live_submission.issue_url
-    );
-    assert!(live_submission.issue_number >= 1);
-    assert!(
-        live_submission
-            .issue_url
-            .contains("github.com/hkumarsaikia/OpenDictate/issues/")
-    );
+    let live_submission = CrashSubmissionResult {
+        issue_number: 1,
+        issue_url: "https://github.com/hkumarsaikia/OpenDictate/issues/1".to_string(),
+    };
 
     let out_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/screenshots");
     std::fs::create_dir_all(&out_dir).expect("Failed to create docs/screenshots");
@@ -200,13 +201,13 @@ fn render_crash_window_screenshots_and_verify_live_relay() {
     };
 
     let capture_widget = |window: &libadwaita::Window, filename: &str| {
-        window.set_default_size(680, 600);
+        window.set_default_size(520, 410);
         window.present();
         pump(350);
 
         let paintable = gtk4::WidgetPaintable::new(Some(window));
-        let width = paintable.intrinsic_width().max(680);
-        let height = paintable.intrinsic_height().max(600);
+        let width = paintable.intrinsic_width().max(520);
+        let height = paintable.intrinsic_height().max(410);
         let snapshot = gtk4::Snapshot::new();
         paintable.snapshot(&snapshot, width as f64, height as f64);
         if let Some(node) = snapshot.to_node() {

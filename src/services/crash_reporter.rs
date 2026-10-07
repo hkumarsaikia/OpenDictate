@@ -8,8 +8,18 @@
 
 use crate::config::Config;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+const MAX_DIAGNOSTIC_EVENTS: usize = 25;
+
+static DIAGNOSTIC_EVENTS: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
+
+fn events_buffer() -> &'static Mutex<VecDeque<String>> {
+    DIAGNOSTIC_EVENTS.get_or_init(|| Mutex::new(VecDeque::with_capacity(MAX_DIAGNOSTIC_EVENTS)))
+}
 
 /// Public Cloudflare Worker relay endpoint that forwards sanitized crash reports
 /// to `https://github.com/hkumarsaikia/OpenDictate/issues` using a server-side
@@ -52,10 +62,40 @@ struct RelayResponse {
     error: Option<String>,
 }
 
-/// Service managing local crash persistence and remote report submission.
+/// Service managing local crash persistence, subsystem diagnostic telemetry, and remote report submission.
 pub struct CrashReporter;
 
 impl CrashReporter {
+    /// Records a timestamped runtime diagnostic event (e.g. audio stream failure, zero-frame capture,
+    /// AI provider error, or hotkey portal failure) into the in-memory diagnostic ring buffer
+    /// so it is included in crash and troubleshooting reports.
+    pub fn record_event(subsystem: &str, detail: &str) {
+        let entry = format!(
+            "[{}] [{}] {}",
+            Self::current_utc_timestamp(),
+            subsystem.trim(),
+            Self::anonymize_text(detail.trim())
+        );
+        if let Ok(mut buf) = events_buffer().lock() {
+            if buf.len() >= MAX_DIAGNOSTIC_EVENTS {
+                buf.pop_front();
+            }
+            buf.push_back(entry);
+        }
+    }
+
+    /// Returns a formatted multi-line log of all recorded runtime subsystem events in the current session.
+    pub fn recent_events_summary() -> String {
+        if let Ok(buf) = events_buffer().lock() {
+            if buf.is_empty() {
+                "No subsystem errors recorded in current session".to_string()
+            } else {
+                buf.iter().cloned().collect::<Vec<_>>().join("\n")
+            }
+        } else {
+            "Unavailable".to_string()
+        }
+    }
     /// Returns the path to the pending (unacknowledged) crash report file.
     ///
     /// Respects `OPENDICTATE_CRASH_LOG_PATH` when set (used by automated tests).

@@ -698,6 +698,10 @@ impl AudioRecorder {
                     },
                     move |err| {
                         log::error!("Audio stream error: {}", err);
+                        crate::services::crash_reporter::CrashReporter::record_event(
+                            "AudioStream",
+                            &format!("Hardware audio stream error: {}", err),
+                        );
                     },
                     None,
                 )?
@@ -724,6 +728,10 @@ impl AudioRecorder {
                     },
                     move |err| {
                         log::error!("Audio stream error: {}", err);
+                        crate::services::crash_reporter::CrashReporter::record_event(
+                            "AudioStream",
+                            &format!("Hardware audio stream error: {}", err),
+                        );
                     },
                     None,
                 )?
@@ -753,6 +761,10 @@ impl AudioRecorder {
                     },
                     move |err| {
                         log::error!("Audio stream error: {}", err);
+                        crate::services::crash_reporter::CrashReporter::record_event(
+                            "AudioStream",
+                            &format!("Hardware audio stream error: {}", err),
+                        );
                     },
                     None,
                 )?
@@ -780,6 +792,10 @@ impl AudioRecorder {
                     },
                     move |err| {
                         log::error!("Audio stream error: {}", err);
+                        crate::services::crash_reporter::CrashReporter::record_event(
+                            "AudioStream",
+                            &format!("Hardware audio stream error: {}", err),
+                        );
                     },
                     None,
                 )?

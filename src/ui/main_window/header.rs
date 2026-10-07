@@ -1046,6 +1046,16 @@ pub fn generate_troubleshooting_diagnostics(config: &Config) -> String {
         .audio_device
         .clone()
         .unwrap_or_else(|| "System Default".to_string());
+    let detected_audio_profile = crate::audio::AudioRecorder::detect_connected_audio_profile();
+    let detected_inputs = match crate::audio::AudioRecorder::list_input_devices() {
+        Ok(devs) if !devs.is_empty() => {
+            let preview: Vec<String> = devs.iter().take(6).cloned().collect();
+            format!("{} detected ({})", devs.len(), preview.join(", "))
+        }
+        Ok(_) => "0 input devices detected (no microphone available)".to_string(),
+        Err(e) => format!("Audio device enumeration error: {}", e),
+    };
+    let recent_events = crate::services::crash_reporter::CrashReporter::recent_events_summary();
     let ai_mode = if config.ai_mode == "local" {
         "Local AI"
     } else {
@@ -1076,9 +1086,13 @@ pub fn generate_troubleshooting_diagnostics(config: &Config) -> String {
          \n\
          [Audio & Input]\n\
          Audio Server: {audio_srv}\n\
-         Microphone: {audio_dev} (16 kHz Mono PCM)\n\
+         Microphone: {audio_dev} (Auto Profile: {audio_profile} • 16 kHz Mono PCM)\n\
+         Detected Input Devices: {detected_inputs}\n\
          Global Hotkey: {hotkey}\n\
          Tone Preset: {tone}\n\
+         \n\
+         [Subsystem Health & Recent Events]\n\
+         {recent_events}\n\
          \n\
          [Paths]\n\
          Config: {cfg_path}\n\
@@ -1107,8 +1121,11 @@ pub fn generate_troubleshooting_diagnostics(config: &Config) -> String {
         threads = config.local_threads,
         audio_srv = audio_backend,
         audio_dev = audio_dev,
+        audio_profile = detected_audio_profile,
+        detected_inputs = detected_inputs,
         hotkey = hotkey,
         tone = config.tone,
+        recent_events = recent_events,
         cfg_path = portable_cfg_path,
         data_dir = portable_data_dir,
     )
