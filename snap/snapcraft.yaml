@@ -36,32 +36,23 @@ apps:
       - x11
 
 parts:
-  alsa-lib:
-    plugin: autotools
-    source: https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.12.tar.bz2
-    source-checksum: sha256/091f09e25d254a6bc666275d270425514f76ca0cf8ce9b8a09f87c1be58a9e7f
-    autotools-configure-parameters:
-      - --disable-static
-      - --without-versioned
-    stage-packages:
-      - libasound2t64
-
   opendictate:
-    after:
-      - alsa-lib
     plugin: rust
     source: .
     rust-channel: stable
-    parse-info:
-      - usr/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml
     build-packages:
+      - build-essential
+      - pkg-config
+      - cmake
+      - clang
+      - libclang-dev
       - libgtk-4-dev
       - libadwaita-1-dev
       - libasound2-dev
       - libdbus-1-dev
       - libssl-dev
-      - cmake
-      - clang
+    stage-packages:
+      - libasound2t64
     override-build: |
       craftctl default
       mkdir -p $CRAFT_PART_INSTALL/usr/bin
@@ -80,3 +71,4 @@ parts:
         install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-dark.png
         install -Dm644 src/ui/assets/brand/png-light/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-light.png
       done
+
