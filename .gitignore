@@ -1,0 +1,32 @@
+# Rust & Packaging Build Artifacts
+target/
+build/
+dist/
+build_reports/
+*.deb
+*.snap
+*.flatpak
+*.AppImage
+*.squashfs
+*.assert
+
+# Local Configuration & Development Data
+.env
+config.json
+secrets/
+scratch/
+production/
+recordings/
+*.sqlite
+*.sqlite-journal
+*.db
+*.wav
+!tests/fixtures/*.wav
+*.mp3
+*.opus
+
+# Editor & OS Directories
+.vscode/
+.idea/
+.DS_Store
+

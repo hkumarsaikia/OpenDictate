@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+Name=OpenDictate
+GenericName=Voice Dictation
+Comment=Dictate text with your voice
+Exec=opendictate %U
+Icon=io.github.opendictate.OpenDictate
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=Dictation;Speech;Voice;Whisper;Transcription;AI;
+StartupWMClass=opendictate
+X-Purism-FormFactor=Workstation;Mobile;
+Actions=MiniBar;Toggle;
+
+[Desktop Action MiniBar]
+Name=Open Floating Mini-Bar
+Exec=opendictate --minibar
+
+[Desktop Action Toggle]
+Name=Toggle Dictation
+Exec=opendictate --toggle

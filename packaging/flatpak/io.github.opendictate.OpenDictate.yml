@@ -1,0 +1,67 @@
+app-id: io.github.opendictate.OpenDictate
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: opendictate
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Direct ALSA /dev/snd/* device access is permitted as an acoustic hardware fallback on headless/minimal systems that do not run PulseAudio/PipeWire portals
+  - --device=all
+  - --socket=pulseaudio
+  - --share=network
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-data/opendictate:create
+  - --filesystem=xdg-config/opendictate:create
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm18
+
+build-options:
+  append-path: /usr/lib/sdk/llvm18/bin:/usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/opendictate/cargo
+
+modules:
+  - name: alsa-lib
+    config-opts:
+      - --disable-static
+      - --without-versioned
+    sources:
+      - type: archive
+        url: https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.12.tar.bz2
+        sha256: 091f09e25d254a6bc666275d270425514f76ca0cf8ce9b8a09f87c1be58a9e7f
+
+  - name: opendictate
+    buildsystem: simple
+    build-options:
+      env:
+        LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
+    build-commands:
+      - cargo build --release --verbose
+      - install -Dm755 target/release/opendictate /app/bin/opendictate
+      - install -Dm644 data/io.github.opendictate.OpenDictate.desktop /app/share/applications/io.github.opendictate.OpenDictate.desktop
+      - install -Dm644 data/io.github.opendictate.OpenDictate.metainfo.xml /app/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml
+      - install -Dm644 src/ui/assets/brand/opendictate.svg /app/share/icons/hicolor/scalable/apps/io.github.opendictate.OpenDictate.svg
+      - install -Dm644 src/ui/assets/brand/opendictate.svg /app/share/icons/hicolor/scalable/apps/opendictate.svg
+      - install -Dm644 src/ui/assets/brand/opendictate-dark.svg /app/share/icons/hicolor/scalable/apps/opendictate-dark.svg
+      - install -Dm644 src/ui/assets/brand/opendictate-light.svg /app/share/icons/hicolor/scalable/apps/opendictate-light.svg
+      - install -Dm644 src/ui/assets/brand/png/16x16.png /app/share/icons/hicolor/16x16/apps/io.github.opendictate.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/24x24.png /app/share/icons/hicolor/24x24/apps/io.github.opendictate.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.opendictate.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/48x48.png /app/share/icons/hicolor/48x48/apps/io.github.opendictate.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.opendictate.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.opendictate.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/128x128.png /app/share/icons/hicolor/128x128/apps/opendictate-dark.png
+      - install -Dm644 src/ui/assets/brand/png-light/128x128.png /app/share/icons/hicolor/128x128/apps/opendictate-light.png
+      - install -Dm644 src/ui/assets/brand/png/256x256.png /app/share/icons/hicolor/256x256/apps/io.github.opendictate.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/512x512.png /app/share/icons/hicolor/512x512/apps/io.github.opendictate.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/512x512.png /app/share/icons/hicolor/512x512/apps/opendictate-dark.png
+      - install -Dm644 src/ui/assets/brand/png-light/512x512.png /app/share/icons/hicolor/512x512/apps/opendictate-light.png
+    sources:
+      - type: dir
+        path: ../../

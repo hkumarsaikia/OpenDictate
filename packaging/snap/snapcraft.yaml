@@ -1,0 +1,72 @@
+name: opendictate
+version: '2.0.0'
+summary: Dictate text with your voice
+description: |
+  OpenDictate is a native Linux voice dictation and AI speech-to-text application.
+  It combines private offline transcription with multi-provider Cloud AI models
+  to turn spoken voice into clean, polished text.
+
+grade: stable
+confinement: strict
+base: core24
+
+platforms:
+  amd64: {}
+  arm64: {}
+
+apps:
+  opendictate:
+    command: usr/bin/opendictate
+    extensions: [ gnome ]
+    plugs:
+      - audio-record
+      - audio-playback
+      - network
+      - desktop
+      - desktop-legacy
+      - wayland
+      - x11
+    common-id: io.github.opendictate.OpenDictate
+
+parts:
+  alsa-lib:
+    plugin: autotools
+    source: https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.12.tar.bz2
+    source-checksum: sha256/091f09e25d254a6bc666275d270425514f76ca0cf8ce9b8a09f87c1be58a9e7f
+    autotools-configure-parameters:
+      - --disable-static
+      - --without-versioned
+    stage-packages:
+      - libasound2t64
+
+  opendictate:
+    after:
+      - alsa-lib
+    plugin: rust
+    source: .
+    rust-channel: stable
+    build-packages:
+      - libgtk-4-dev
+      - libadwaita-1-dev
+      - libasound2-dev
+      - libdbus-1-dev
+      - libssl-dev
+      - cmake
+      - clang
+    override-build: |
+      craftctl default
+      mkdir -p $CRAFT_PART_INSTALL/usr/bin
+      if [ -f $CRAFT_PART_INSTALL/bin/opendictate ]; then
+        cp $CRAFT_PART_INSTALL/bin/opendictate $CRAFT_PART_INSTALL/usr/bin/opendictate
+      fi
+      install -Dm644 data/io.github.opendictate.OpenDictate.desktop $CRAFT_PART_INSTALL/usr/share/applications/io.github.opendictate.OpenDictate.desktop
+      install -Dm644 data/io.github.opendictate.OpenDictate.metainfo.xml $CRAFT_PART_INSTALL/usr/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml
+      install -Dm644 src/ui/assets/brand/opendictate.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/io.github.opendictate.OpenDictate.svg
+      install -Dm644 src/ui/assets/brand/opendictate.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/opendictate.svg
+      install -Dm644 src/ui/assets/brand/opendictate-dark.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/opendictate-dark.svg
+      install -Dm644 src/ui/assets/brand/opendictate-light.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/opendictate-light.svg
+      for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
+        install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/io.github.opendictate.OpenDictate.png
+        install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-dark.png
+        install -Dm644 src/ui/assets/brand/png-light/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-light.png
+      done

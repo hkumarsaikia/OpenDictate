@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.opendictate.OpenDictate</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>OpenDictate</name>
+  <summary>Dictate text with your voice</summary>
+  <developer id="io.github.hkumarsaikia">
+    <name>H. K. Saikia</name>
+  </developer>
+
+  <description>
+    <p>
+      OpenDictate is a native voice dictation and AI speech-to-text application. It combines private offline transcription with multi-provider Cloud AI models to turn spoken voice into clean, polished text.
+    </p>
+    <p>
+      Features include:
+    </p>
+    <ul>
+      <li>Offline on-device speech recognition powered by Whisper GGML models</li>
+      <li>Multi-provider Cloud AI transcription and text refinement</li>
+      <li>Hardware-aware microphone routing across System Default, Headphones, and Handsfree devices</li>
+      <li>Floating MiniBar overlay for hands-free dictation across active windows</li>
+      <li>Persistent local dictation history with quick clipboard copy and deletion</li>
+      <li>Interface localization across 28 languages with automatic dark and light themes</li>
+      <li>Wayland and X11 text insertion, system tray indicator, and global shortcuts</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.opendictate.OpenDictate.desktop</launchable>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#d6eff8</color>
+    <color type="primary" scheme_preference="dark">#1c3b4d</color>
+  </branding>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/assets/screenshot-main.png</image>
+      <caption>Main configuration window with local and cloud speech model settings</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/assets/screenshot-minibar.png</image>
+      <caption>Floating MiniBar for quick desktop dictation</caption>
+    </screenshot>
+  </screenshots>
+
+  <categories>
+    <category>Utility</category>
+    <category>Accessibility</category>
+  </categories>
+
+  <url type="homepage">https://github.com/hkumarsaikia/OpenDictate</url>
+  <url type="bugtracker">https://github.com/hkumarsaikia/OpenDictate/issues</url>
+  <url type="vcs-browser">https://github.com/hkumarsaikia/OpenDictate</url>
+
+  <provides>
+    <binary>opendictate</binary>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <releases>
+    <release version="2.0.0" date="2026-10-02">
+      <description>
+        <p>Major release featuring native GTK4 and Libadwaita interface, offline Whisper GGML speech recognition, multi-provider Cloud AI transcription, 28-language localization, and persistent SQLite dictation history.</p>
+        <ul>
+          <li>Native GTK4 and Libadwaita user interface with adaptive dark and light themes</li>
+          <li>Dual-engine speech recognition supporting offline Whisper models and Cloud AI providers</li>
+          <li>Real-time interface localization across 28 languages with Right-to-Left layout support</li>
+          <li>In-popover dictation history viewer with clipboard copy and record management</li>
+          <li>Floating MiniBar recording pill with live acoustic waveform visualization</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <content_rating type="oars-1.1" />
+</component>

@@ -1,0 +1,43 @@
+{
+  "id": "dark",
+  "name": "Dark",
+  "author": "OpenDictate Team",
+  "is_dark": true,
+  "colors": {
+    "bg_app": "#1E1E1E",
+    "bg_surface": "#242424",
+    "bg_panel": "#2E2E2E",
+    "bg_hover": "rgba(255, 255, 255, 0.08)",
+    "bg_pressed": "rgba(255, 255, 255, 0.14)",
+    "accent_primary": "#3584E4",
+    "accent_primary_hover": "#4792EB",
+    "accent_primary_pressed": "#1D4ED8",
+    "accent_secondary": "#E95420",
+    "border_subtle": "rgba(255, 255, 255, 0.10)",
+    "border_focus": "#3584E4",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#A1A1AA",
+    "text_muted": "#71717A",
+    "danger": "#EF4444",
+    "danger_bg": "rgba(239, 68, 68, 0.18)",
+    "success": "#10B981",
+    "success_bg": "rgba(16, 185, 129, 0.18)",
+    "warning": "#F59E0B",
+    "warning_bg": "rgba(245, 158, 11, 0.18)",
+    "soundwave_gradient": ["#3584E4", "#62A0EA", "#99C1F1"]
+  },
+  "metrics": {
+    "radius_window": "16px",
+    "radius_card": "12px",
+    "radius_pill": "24px",
+    "radius_button": "8px",
+    "radius_input": "8px",
+    "font_family_main": "'Geist', 'Ubuntu', 'Inter', -apple-system, sans-serif",
+    "font_family_mono": "'Geist Mono', 'Ubuntu Mono', monospace",
+    "font_size_sm": "11px",
+    "font_size_base": "13px",
+    "font_size_lg": "15px",
+    "font_size_title": "18px",
+    "glass_alpha": 0.90
+  }
+}

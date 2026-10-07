@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- Pure black studio surface on dark-theme tile -->
+    <linearGradient id="tileTopDark" x1="64" y1="12" x2="64" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#000000"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </linearGradient>
+    <!-- Cylindrical horizontal shading for brushed aluminum capsule (GNOME HIG) -->
+    <linearGradient id="capsuleMetalLight" x1="48" y1="48" x2="80" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#deddda"/>
+      <stop offset="35%" stop-color="#ffffff"/>
+      <stop offset="75%" stop-color="#f6f5f4"/>
+      <stop offset="100%" stop-color="#c0bfbc"/>
+    </linearGradient>
+    <!-- Cylindrical horizontal shading for lower preamp barrel -->
+    <linearGradient id="barrelMetalLight" x1="48" y1="62" x2="80" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#c0bfbc"/>
+      <stop offset="35%" stop-color="#f6f5f4"/>
+      <stop offset="100%" stop-color="#9a9996"/>
+    </linearGradient>
+    <clipPath id="capsuleClipDark">
+      <rect x="48" y="24" width="32" height="48" rx="16"/>
+    </clipPath>
+  </defs>
+
+  <!-- GNOME HIG 3D Extruded Base Ledge (6px physical thickness) -->
+  <rect x="12" y="18" width="104" height="98" rx="22" fill="#000000"/>
+
+  <!-- Main Top Tile Face (Complete Black) -->
+  <rect x="12" y="12" width="104" height="98" rx="22" fill="#000000"/>
+  <rect x="12.5" y="12.5" width="103" height="97" rx="21.5" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1"/>
+
+  <!-- Subtle contact shadow on tile surface under desk stand -->
+  <ellipse cx="64" cy="99" rx="24" ry="4" fill="#000000" opacity="0.75"/>
+
+  <!-- Machined Desk Stand Base (3D extruded) -->
+  <rect x="44" y="94" width="40" height="6" rx="3" fill="#77767b"/>
+  <rect x="44" y="92" width="40" height="5" rx="2.5" fill="#c0bfbc"/>
+
+  <!-- Stand Vertical Post -->
+  <rect x="60" y="79" width="8" height="14" fill="#9a9996"/>
+  <rect x="61" y="79" width="3" height="14" fill="#deddda"/>
+
+  <!-- Yoke Thumbscrews (Left & Right) -->
+  <rect x="35" y="51" width="6" height="8" rx="2" fill="#9a9996"/>
+  <rect x="87" y="51" width="6" height="8" rx="2" fill="#9a9996"/>
+
+  <!-- U-Shaped Studio Suspension Yoke -->
+  <path d="M 41 53 V 59 C 41 71.7 51.3 81 64 81 C 76.7 81 87 71.7 87 59 V 53"
+        fill="none" stroke="#5e5c64" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 41 52 V 58 C 41 70.7 51.3 80 64 80 C 76.7 80 87 70.7 87 58 V 52"
+        fill="none" stroke="#deddda" stroke-width="4.5" stroke-linecap="round"/>
+
+  <!-- Condenser Microphone Capsule Drop Shadow -->
+  <rect x="48" y="26" width="32" height="48" rx="16" fill="#121016" opacity="0.45"/>
+
+  <!-- Condenser Microphone Capsule (Clipped Cylinder) -->
+  <g clip-path="url(#capsuleClipDark)">
+    <!-- Upper Acoustic Grille Head -->
+    <rect x="48" y="24" width="32" height="28" fill="url(#capsuleMetalLight)"/>
+    <!-- Lower Preamp Barrel -->
+    <rect x="48" y="52" width="32" height="20" fill="url(#barrelMetalLight)"/>
+
+    <!-- Acoustic Grille Slots -->
+    <rect x="53" y="31" width="22" height="3" rx="1.5" fill="#2d2a34"/>
+    <rect x="51" y="37" width="26" height="3" rx="1.5" fill="#2d2a34"/>
+    <rect x="53" y="43" width="22" height="3" rx="1.5" fill="#2d2a34"/>
+
+    <!-- Machined Equatorial Collar Ring -->
+    <rect x="48" y="50" width="32" height="4" fill="#5e5c64"/>
+    <rect x="48" y="50" width="32" height="1.5" fill="#3d3846"/>
+  </g>
+
+  <!-- Studio Recording Tally Indicator (GNOME HIG Vermilion Accent) -->
+  <circle cx="64" cy="62" r="5" fill="#2d2a34"/>
+  <circle cx="64" cy="62" r="3.5" fill="#e01b24"/>
+  <circle cx="62.8" cy="60.8" r="1" fill="#ff7800" opacity="0.75"/>
+</svg>
