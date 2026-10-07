@@ -119,12 +119,24 @@ elif [ -f "$BUILD_DIR/appimagetool" ]; then
     chmod +x "$APPIMAGE_FILE"
     echo "AppImage created successfully: $APPIMAGE_FILE"
 elif command -v mksquashfs &>/dev/null; then
-    echo "appimagetool not found on PATH; generating squashfs bundle with mksquashfs..."
-    rm -f "$SQUASHFS_FILE"
-    mksquashfs "$APP_DIR" "$SQUASHFS_FILE" -root-owned -noappend
-    echo "SquashFS bundle created successfully: $SQUASHFS_FILE"
+    echo "Generating SquashFS payload with mksquashfs..."
+    rm -f "$SQUASHFS_FILE" "$APPIMAGE_FILE"
+    mksquashfs "$APP_DIR" "$SQUASHFS_FILE" -root-owned -noappend -comp zstd
+    RUNTIME_BIN="$BUILD_DIR/runtime-${ARCH}"
+    if [ ! -f "$RUNTIME_BIN" ] && command -v curl &>/dev/null; then
+        echo "Downloading AppImage Type-2 runtime for ${ARCH}..."
+        curl -fsSL "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-${ARCH}" -o "$RUNTIME_BIN" || rm -f "$RUNTIME_BIN"
+    fi
+    if [ -f "$RUNTIME_BIN" ] && [ -s "$RUNTIME_BIN" ]; then
+        cat "$RUNTIME_BIN" "$SQUASHFS_FILE" > "$APPIMAGE_FILE"
+        chmod +x "$APPIMAGE_FILE"
+        rm -f "$SQUASHFS_FILE"
+        echo "AppImage created successfully: $APPIMAGE_FILE"
+    else
+        echo "SquashFS bundle created successfully: $SQUASHFS_FILE"
+    fi
 else
     echo "Notice: Neither appimagetool nor mksquashfs found on PATH. AppDir prepared at: $APP_DIR"
 fi
 
-echo "=== OpenDictate AppDir Staging Complete ==="
+echo "=== OpenDictate AppImage Build Complete ==="

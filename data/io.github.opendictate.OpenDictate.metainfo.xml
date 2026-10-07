@@ -61,6 +61,7 @@
   <url type="homepage">https://github.com/hkumarsaikia/OpenDictate</url>
   <url type="bugtracker">https://github.com/hkumarsaikia/OpenDictate/issues</url>
   <url type="vcs-browser">https://github.com/hkumarsaikia/OpenDictate</url>
+  <url type="donation">https://buymeacoffee.com/hksaikia</url>
 
   <provides>
     <binary>opendictate</binary>
