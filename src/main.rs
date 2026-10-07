@@ -14,6 +14,7 @@ static MAIN_BROKER: MessageBroker<MainWindowMsg> = MessageBroker::new();
 
 fn main() {
     env_logger::init();
+    opendictate::services::crash_reporter::CrashReporter::install_panic_hook();
 
     let cli = CliArgs::parse();
 

@@ -985,18 +985,24 @@ pub fn generate_troubleshooting_diagnostics(config: &Config) -> String {
         "ALSA / System Default"
     };
 
-    let gtk_ver = format!(
-        "{}.{}.{}",
-        gtk4::major_version(),
-        gtk4::minor_version(),
-        gtk4::micro_version()
-    );
-    let adw_ver = format!(
-        "{}.{}.{}",
-        libadwaita::major_version(),
-        libadwaita::minor_version(),
-        libadwaita::micro_version()
-    );
+    let (gtk_ver, adw_ver) = if gtk4::is_initialized_main_thread() {
+        (
+            format!(
+                "{}.{}.{}",
+                gtk4::major_version(),
+                gtk4::minor_version(),
+                gtk4::micro_version()
+            ),
+            format!(
+                "{}.{}.{}",
+                libadwaita::major_version(),
+                libadwaita::minor_version(),
+                libadwaita::micro_version()
+            ),
+        )
+    } else {
+        ("4.x".to_string(), "1.x".to_string())
+    };
 
     let cpu_cores = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -1136,7 +1142,14 @@ pub const DEFAULT_LOCAL_MODEL_LINKS: &[(&str, &str)] = &[
 pub fn build_about_dialog(config: &Config) -> libadwaita::AboutDialog {
     crate::ui::theme::ensure_app_icons_registered();
     ensure_main_menu_css();
-    let debug_info = generate_troubleshooting_diagnostics(config);
+    let mut debug_info = generate_troubleshooting_diagnostics(config);
+    if let Some(crash_summary) =
+        crate::services::crash_reporter::CrashReporter::load_latest_crash_summary()
+    {
+        debug_info.push_str("\n[Recent Crash Report]\n");
+        debug_info.push_str(&crash_summary);
+        debug_info.push('\n');
+    }
     let app_icon = crate::ui::theme::ThemeMode::from_str(&config.theme).icon_name();
 
     let comments_text = "OpenDictate is a native Linux voice dictation and AI speech-to-text application. It combines private offline transcription with multi-provider Cloud AI models to turn spoken voice into clean, polished text.";

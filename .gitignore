@@ -1,7 +1,9 @@
 /target/
 /build/
 /dist/
+/secrets/
 *.deb
 *.snap
 *.flatpak
 *.AppImage
+

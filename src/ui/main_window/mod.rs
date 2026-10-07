@@ -1,7 +1,9 @@
 //! Native GNOME MainWindow settings dashboard module (Relm4 + Libadwaita).
 
+pub mod crash_dialog;
 pub mod header;
 pub mod settings_view;
+
 
 use crate::config::Config;
 use crate::services::dictation_worker::{
@@ -946,6 +948,18 @@ impl SimpleComponent for MainWindowModel {
             "settings",
             &init.config.ui_language,
         )));
+
+        // If a pending crash report exists from a previous session panic, present the recovery dialog
+        if let Some(pending_crash) =
+            crate::services::crash_reporter::CrashReporter::load_pending_crash()
+        {
+            let root_for_crash = root.clone();
+            gtk4::glib::idle_add_local_once(move || {
+                let crash_ui =
+                    crash_dialog::build_crash_report_window(&pending_crash, Some(&root_for_crash));
+                crash_ui.window.present();
+            });
+        }
 
         let widgets = MainWindowWidgets {
             window: root.clone(),

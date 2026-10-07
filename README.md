@@ -104,6 +104,22 @@ Built with Rust (2024 edition), GTK 4.12+, Libadwaita 1.5+, and Relm4, OpenDicta
 
 ---
 
+### 4. Automated Crash Recovery & 1-Click Editable Crash Reporter
+
+![Crash Recovery Window — Editable Diagnostic Report](docs/screenshots/crash-report-window-dark.png)
+
+![Crash Recovery Window — 1-Click GitHub Issue Submission Confirmation](docs/screenshots/crash-report-window-sent.png)
+
+| Interface Element | Description & Functionality |
+| :--- | :--- |
+| **Automatic Panic Hook (`last_crash.log`)** | Captures unexpected Rust panics on any thread along with stack backtraces and privacy-sanitized system/audio diagnostics (`~` home path anonymization and API key redaction) to `~/.local/share/opendictate/last_crash.log`. |
+| **Editable Report Summary Title** | Pre-populated with the OpenDictate version, crash source file/line, and panic summary; fully editable before submission. |
+| **Editable Crash Report & Backtrace View** | Monospace editor on the same screen allowing the user to review the full report, add reproduction notes, or remove any details prior to sending. |
+| **1-Click `Send Crash Report` Button** | Submits the user-reviewed crash report directly from the window to `https://github.com/hkumarsaikia/OpenDictate/issues` via the OpenDictate Cloudflare Worker relay (`opendictate-crash-relay.hkumarsaikia.workers.dev`) without requiring a GitHub account or leaving the app. |
+| **`Copy Report` & `Dismiss` Actions** | Copies the edited report to the system clipboard or archives `last_crash.log` to `previous_crash.log` so the prompt only appears once. |
+
+---
+
 ## Architecture Overview
 
 ```text
@@ -114,24 +130,25 @@ OpenDictate/
 ├── packaging/                 # Flatpak (GNOME 48) and AppImage build manifests
 ├── snap/                      # Canonical Snap Store manifest (snapcraft.yaml, core24)
 ├── src/
-│   ├── main.rs                # Application entrypoint and single-instance / CLI dispatch
+│   ├── main.rs                # Application entrypoint, panic hook, and CLI dispatch
 │   ├── lib.rs                 # Library root exporting core modules
 │   ├── cli.rs                 # Command-line argument parser (--minibar, --toggle, etc.)
 │   ├── config.rs              # Persistent JSON configuration (~/.config/opendictate/config.json)
 │   ├── audio/                 # CPAL audio capture, Rubato 16 kHz resampler, and RMS level meter
 │   ├── services/
 │   │   ├── ai/                # Local Whisper GGML engine and Cloud AI provider clients
+│   │   ├── crash_reporter.rs  # Panic hook, crash log persistence, and Cloudflare relay client
 │   │   ├── dictation_worker.rs# Background transcription & text enhancement worker
 │   │   ├── hotkey.rs          # XDG GlobalShortcuts portal and desktop hotkey integration
 │   │   ├── i18n.rs            # Static 28-language UI translation catalog (English default)
 │   │   ├── storage.rs         # SQLite persistence for dictation history (history.db)
 │   │   └── tray.rs            # D-Bus StatusNotifierItem system tray service
 │   └── ui/
-│       ├── main_window/       # Libadwaita main window, header menu popover, and settings view
+│       ├── main_window/       # Libadwaita main window, header menu, settings, and crash dialog
 │       ├── mini_bar/          # Floating recording pill, waveform visualizer, and drawer
 │       ├── theme.rs           # Adaptive CSS theme compiler and stylesheet loader
 │       └── assets/brand/      # Scalable SVG and hicolor PNG application icons
-└── tests/                     # Integration, UI, audio, storage, and packaging test suites
+└── tests/                     # Integration, UI, audio, crash reporter, storage, and packaging tests
 ```
 
 ---
