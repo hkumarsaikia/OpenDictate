@@ -465,3 +465,124 @@ fn test_should_use_default_pulse_device_for_standard_profiles() {
         "plughw:CARD=Mic,DEV=0"
     )));
 }
+
+#[test]
+fn test_multi_hardware_architecture_port_and_profile_resolution() {
+    // 1. Intel Sound Open Firmware (sof-hda-dsp) with UCM2 Mic1 (internal DMIC) & Mic2 (headset jack)
+    let intel_sof_sources = r#"
+Source #51
+	State: SUSPENDED
+	Name: alsa_input.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_6__source
+	Description: Sof-hda-dsp Digital Microphone
+	Ports:
+		[Out] Mic1: Digital Microphone (type: Mic, priority: 100, available)
+Source #52
+	State: RUNNING
+	Name: alsa_input.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__source
+	Description: Sof-hda-dsp Headphones Stereo Microphone
+	Ports:
+		[Out] Mic2: Headphones Stereo Microphone (type: Headset, priority: 200, available)
+	Active Port: [Out] Mic2
+"#;
+    assert_eq!(
+        AudioRecorder::classify_hardware_profile_from_sources_and_cards(intel_sof_sources, "", &[]),
+        "Headphones"
+    );
+    assert_eq!(
+        AudioRecorder::resolve_exclusive_source_from_pactl("Headphones", intel_sof_sources, "")
+            .as_deref(),
+        Some(
+            "alsa_input.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__source"
+        )
+    );
+    assert_eq!(
+        AudioRecorder::resolve_available_port_for_source(
+            intel_sof_sources,
+            "alsa_input.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__source",
+            "Headphones"
+        )
+        .as_deref(),
+        Some("[Out] Mic2")
+    );
+    assert_eq!(
+        AudioRecorder::resolve_available_port_for_source(
+            intel_sof_sources,
+            "alsa_input.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_6__source",
+            "System Default"
+        )
+        .as_deref(),
+        Some("[Out] Mic1")
+    );
+
+    // 2. Apple Silicon (Asahi Linux) platform-sound with internal mic & 3.5mm combo jack
+    let asahi_sources = r#"
+Source #33
+	State: SUSPENDED
+	Name: alsa_input.platform-sound.HiFi__Mic__source
+	Description: MacBook Pro J314 Built-in Microphone
+	Ports:
+		[In] Mic: Internal Microphone (type: Mic, priority: 100, available)
+		[In] Jack: Headset Microphone (type: Headset, priority: 200, not available)
+	Active Port: [In] Mic
+"#;
+    assert_eq!(
+        AudioRecorder::classify_hardware_profile_from_sources_and_cards(asahi_sources, "", &[]),
+        "System Default"
+    );
+    assert_eq!(
+        AudioRecorder::resolve_exclusive_source_from_pactl(
+            "System Default",
+            asahi_sources,
+            "alsa_input.platform-sound.HiFi__Mic__source"
+        )
+        .as_deref(),
+        Some("alsa_input.platform-sound.HiFi__Mic__source")
+    );
+    assert_eq!(
+        AudioRecorder::resolve_available_port_for_source(
+            asahi_sources,
+            "alsa_input.platform-sound.HiFi__Mic__source",
+            "System Default"
+        )
+        .as_deref(),
+        Some("[In] Mic")
+    );
+
+    // 3. Bluetooth LE Audio (bap-duplex) & mSBC/CVSD dynamic profile discovery
+    let bt_le_cards = r#"
+Card #90
+	Name: bluez_card.AA_BB_CC_11_22_33
+	Driver: module-bluez5-device.c
+	Profiles:
+		bap-sink: High Fidelity Playback (LE Audio Sink) (sinks: 1, sources: 0, priority: 40, available: yes)
+		bap-duplex: High Fidelity Duplex (LE Audio BAP) (sinks: 1, sources: 1, priority: 35, available: yes)
+		off: Off (sinks: 0, sources: 0, priority: 0, available: yes)
+	Active Profile: bap-sink
+"#;
+    assert_eq!(
+        AudioRecorder::resolve_bluetooth_input_profile_switch(bt_le_cards),
+        Some((
+            "bluez_card.AA_BB_CC_11_22_33".to_string(),
+            "bap-duplex".to_string()
+        ))
+    );
+
+    let bt_cvsd_only_cards = r#"
+Card #91
+	Name: bluez_card.44_55_66_77_88_99
+	Driver: module-bluez5-device.c
+	Profiles:
+		a2dp-sink: High Fidelity Playback (A2DP Sink) (sinks: 1, sources: 0, priority: 40, available: yes)
+		headset-head-unit: Headset Head Unit (HSP/HFP, codec mSBC) (sinks: 1, sources: 1, priority: 30, available: no)
+		headset-head-unit-cvsd: Headset Head Unit (HSP/HFP, codec CVSD) (sinks: 1, sources: 1, priority: 20, available: yes)
+	Active Profile: a2dp-sink
+"#;
+    assert_eq!(
+        AudioRecorder::resolve_bluetooth_input_profile_switch(bt_cvsd_only_cards),
+        Some((
+            "bluez_card.44_55_66_77_88_99".to_string(),
+            "headset-head-unit-cvsd".to_string()
+        ))
+    );
+}
+
