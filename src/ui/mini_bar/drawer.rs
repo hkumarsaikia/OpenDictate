@@ -24,6 +24,9 @@ impl PreviewDrawerWidgets {
     /// Updates the displayed transcription text and synchronizes the word count badge.
     pub fn set_text(&self, text: &str) {
         self.text_buffer.set_text(text);
+        let mut end = self.text_buffer.end_iter();
+        self.text_view
+            .scroll_to_iter(&mut end, 0.0, false, 0.0, 1.0);
     }
 
     /// Sets the status text displayed in the status badge.

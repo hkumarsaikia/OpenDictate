@@ -309,6 +309,52 @@ pub async fn download_local_model(
     Ok(target_path)
 }
 
+/// Filters out Whisper non-speech markers (`[BLANK_AUDIO]`, `(blank audio)`, `[ Silence ]`,
+/// `[ Music ]`, `[INAUDIBLE]`, etc.) so ambient silence never prints fake tokens into the UI.
+pub fn clean_whisper_segment(seg: &str) -> String {
+    let trimmed = seg.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if (trimmed.starts_with('[') && trimmed.ends_with(']'))
+        || (trimmed.starts_with('*') && trimmed.ends_with('*'))
+    {
+        return String::new();
+    }
+    let mut cleaned = trimmed.to_string();
+    for marker in [
+        "[BLANK_AUDIO]",
+        "[blank_audio]",
+        "(blank audio)",
+        "(BLANK AUDIO)",
+        "[Silence]",
+        "[silence]",
+        "[ Silence ]",
+        "[ silence ]",
+        "(silence)",
+        "(Silence)",
+        "[Music]",
+        "[music]",
+        "[ Music ]",
+        "[ music ]",
+        "(music)",
+        "[INAUDIBLE]",
+        "[inaudible]",
+        "(inaudible)",
+        "[NOISE]",
+        "[noise]",
+        "(noise)",
+        "[APPLAUSE]",
+        "[applause]",
+        "(applause)",
+    ] {
+        if cleaned.contains(marker) {
+            cleaned = cleaned.replace(marker, " ");
+        }
+    }
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Local AI Provider implementing `AiProvider` via embedded speech engine.
 pub struct LocalAiProvider {
     pub model_id: String,
@@ -359,11 +405,36 @@ impl LocalAiProvider {
             .to_str()
             .ok_or_else(|| AiError::ApiError(format!("Invalid model path: {:?}", model_path)))?;
 
-        let ctx =
-            local_speech_engine::WhisperContext::new_with_params(path_str, Default::default())
-                .map_err(|e| {
-                    AiError::ApiError(format!("Local speech engine context error: {}", e))
-                })?;
+        type CachedWhisperCtx = (
+            String,
+            std::sync::Arc<local_speech_engine::WhisperContext>,
+        );
+        static CACHED_CTX: std::sync::OnceLock<std::sync::Mutex<Option<CachedWhisperCtx>>> =
+            std::sync::OnceLock::new();
+
+        let ctx = {
+            let cache_mutex = CACHED_CTX.get_or_init(|| std::sync::Mutex::new(None));
+            let mut guard = cache_mutex
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some((ref cached_path, ref cached_arc)) = *guard
+                && cached_path == path_str
+            {
+                std::sync::Arc::clone(cached_arc)
+            } else {
+                let loaded = std::sync::Arc::new(
+                    local_speech_engine::WhisperContext::new_with_params(
+                        path_str,
+                        Default::default(),
+                    )
+                    .map_err(|e| {
+                        AiError::ApiError(format!("Local speech engine context error: {}", e))
+                    })?,
+                );
+                *guard = Some((path_str.to_string(), std::sync::Arc::clone(&loaded)));
+                loaded
+            }
+        };
 
         let mut state = ctx
             .create_state()
@@ -421,10 +492,17 @@ impl LocalAiProvider {
 
         let mut result = String::new();
         for segment in state.as_iter() {
-            if let Ok(text) = segment.to_str() {
-                result.push_str(text);
+            let seg_text = if let Ok(text) = segment.to_str() {
+                text.to_string()
             } else {
-                result.push_str(&segment.to_string());
+                segment.to_string()
+            };
+            let cleaned = clean_whisper_segment(&seg_text);
+            if !cleaned.is_empty() {
+                if !result.is_empty() && !result.ends_with(' ') && !cleaned.starts_with(' ') {
+                    result.push(' ');
+                }
+                result.push_str(&cleaned);
             }
         }
 

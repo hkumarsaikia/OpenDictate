@@ -586,3 +586,33 @@ Card #91
     );
 }
 
+#[test]
+fn test_normalize_speech_samples_and_clean_whisper_segment() {
+    use opendictate::audio::recorder::normalize_speech_samples;
+    use opendictate::services::ai::local_ai::clean_whisper_segment;
+
+    // 1. Quiet speech signal with DC offset is centered and boosted toward 0.80 peak
+    let quiet_with_dc: Vec<f32> = (0..1600)
+        .map(|i| 0.45 + 0.05 * ((i as f32) * 0.1).sin())
+        .collect();
+    let normalized = normalize_speech_samples(&quiet_with_dc);
+    let mean = normalized.iter().copied().sum::<f32>() / normalized.len() as f32;
+    let peak = normalized
+        .iter()
+        .fold(0.0_f32, |acc, &x| acc.max(x.abs()));
+    assert!(mean.abs() < 0.01, "Mean should be near zero, got {}", mean);
+    assert!(
+        peak > 0.50 && peak <= 0.85,
+        "Peak should be boosted into optimal range, got {}",
+        peak
+    );
+
+    // 2. Whisper non-speech tokens are stripped while real speech is preserved
+    assert_eq!(clean_whisper_segment("[BLANK_AUDIO]"), "");
+    assert_eq!(clean_whisper_segment(" (blank audio) "), "");
+    assert_eq!(clean_whisper_segment("[ Silence ]"), "");
+    assert_eq!(
+        clean_whisper_segment("Hello world [BLANK_AUDIO] testing live dictation"),
+        "Hello world testing live dictation"
+    );
+}

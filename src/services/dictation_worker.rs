@@ -46,6 +46,10 @@ pub enum DictationWorkerOutput {
     RecordingResumed,
     RecordingCancelled,
     AudioLevel(f32),
+    PartialTranscript {
+        raw_text: String,
+        enhanced_text: String,
+    },
     ProcessingStarted,
     Success {
         raw_text: String,
@@ -68,7 +72,9 @@ pub struct DictationWorker {
     start_time: Option<Instant>,
     active_tone: String,
     level_task: Option<tokio::task::AbortHandle>,
+    stream_task: Option<tokio::task::AbortHandle>,
     level_active: Option<Arc<AtomicBool>>,
+    last_partial: Arc<std::sync::Mutex<Option<(String, String)>>>,
 }
 
 impl std::fmt::Debug for DictationWorker {
@@ -98,7 +104,9 @@ impl DictationWorker {
             start_time: None,
             active_tone: "Clean".to_string(),
             level_task: None,
+            stream_task: None,
             level_active: None,
+            last_partial: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -150,6 +158,13 @@ impl Worker for DictationWorker {
                 if self.is_recording {
                     return;
                 }
+                if let Ok(mut guard) = self.last_partial.lock() {
+                    *guard = None;
+                }
+                if let Some(handle) = self.stream_task.take() {
+                    handle.abort();
+                }
+
                 let (level_tx, mut level_rx) = tokio::sync::mpsc::channel::<[f32; 5]>(100);
                 if let Err(e) = self.recorder.start_recording(level_tx) {
                     crate::services::crash_reporter::CrashReporter::record_event(
@@ -174,15 +189,71 @@ impl Worker for DictationWorker {
                 self.level_active = Some(level_active.clone());
 
                 let sender_levels = sender.clone();
+                let level_active_clone = level_active.clone();
                 let task = tokio_handle().spawn(async move {
                     while let Some(levels) = level_rx.recv().await {
-                        if level_active.load(Ordering::SeqCst) {
+                        if level_active_clone.load(Ordering::SeqCst) {
                             let avg = levels.iter().sum::<f32>() / levels.len() as f32;
                             let _ = sender_levels.output(DictationWorkerOutput::AudioLevel(avg));
                         }
                     }
                 });
                 self.level_task = Some(task.abort_handle());
+
+                // Spawn real-time streaming transcription loop so text appears as the user speaks
+                let snapshot_handle = self.recorder.snapshot_handle();
+                let ai_stream = self.ai_manager.clone();
+                let sender_stream = sender.clone();
+                let stream_active = level_active.clone();
+                let stream_tone = self.active_tone.clone();
+                let is_local_ai = self.config.ai_mode.eq_ignore_ascii_case("local");
+                let last_partial_stream = self.last_partial.clone();
+
+                let stream_job = tokio_handle().spawn(async move {
+                    let poll_ms = if is_local_ai { 450 } else { 1500 };
+                    let mut last_sample_len: usize = 0;
+
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_millis(poll_ms)).await;
+                        if !stream_active.load(Ordering::SeqCst) {
+                            continue;
+                        }
+
+                        let snap = match snapshot_handle.snapshot_wav(60.0) {
+                            Ok(Some(res)) => res,
+                            _ => continue,
+                        };
+                        let (wav_bytes, total_samples) = snap;
+                        if total_samples <= last_sample_len {
+                            continue;
+                        }
+                        last_sample_len = total_samples;
+
+                        if let Ok(raw_text) = ai_stream.transcribe(&wav_bytes).await {
+                            let raw_trimmed = raw_text.trim().to_string();
+                            if !raw_trimmed.is_empty() && stream_active.load(Ordering::SeqCst) {
+                                let enhanced_text = if stream_tone.eq_ignore_ascii_case("Raw") {
+                                    raw_trimmed.clone()
+                                } else {
+                                    crate::services::ai::utils::apply_smart_local_formatting(
+                                        &raw_trimmed,
+                                        &stream_tone,
+                                    )
+                                };
+                                if let Ok(mut guard) = last_partial_stream.lock() {
+                                    *guard = Some((raw_trimmed.clone(), enhanced_text.clone()));
+                                }
+                                let _ = sender_stream.output(
+                                    DictationWorkerOutput::PartialTranscript {
+                                        raw_text: raw_trimmed,
+                                    enhanced_text,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                });
+                self.stream_task = Some(stream_job.abort_handle());
             }
             DictationWorkerInput::PauseRecording => {
                 if !self.is_recording || self.is_paused {
@@ -224,6 +295,12 @@ impl Worker for DictationWorker {
                 if let Some(handle) = self.level_task.take() {
                     handle.abort();
                 }
+                if let Some(handle) = self.stream_task.take() {
+                    handle.abort();
+                }
+                if let Ok(mut guard) = self.last_partial.lock() {
+                    *guard = None;
+                }
                 let _ = sender.output(DictationWorkerOutput::AudioLevel(0.0));
                 let _ = sender.output(DictationWorkerOutput::RecordingCancelled);
                 let _ = sender.output(DictationWorkerOutput::StatusMessage(
@@ -255,6 +332,14 @@ impl Worker for DictationWorker {
                 if let Some(handle) = self.level_task.take() {
                     handle.abort();
                 }
+                if let Some(handle) = self.stream_task.take() {
+                    handle.abort();
+                }
+                let cached_partial = self
+                    .last_partial
+                    .lock()
+                    .ok()
+                    .and_then(|mut g| g.take());
 
                 let wav_bytes = match self.recorder.stop() {
                     Ok(bytes) => bytes,
@@ -279,6 +364,23 @@ impl Worker for DictationWorker {
                 ));
 
                 if wav_bytes.is_empty() || wav_bytes.len() <= 44 {
+                    if let Some((partial_raw, partial_enhanced)) = cached_partial
+                        && !partial_raw.trim().is_empty()
+                    {
+                        let _ = self.storage.insert_dictation(
+                            &partial_raw,
+                            &partial_enhanced,
+                            &tone,
+                            "dictation",
+                            duration,
+                        );
+                        let _ = sender.output(DictationWorkerOutput::Success {
+                            raw_text: partial_raw,
+                            enhanced_text: partial_enhanced,
+                            duration_seconds: duration,
+                        });
+                        return;
+                    }
                     crate::services::crash_reporter::CrashReporter::record_event(
                         "AudioCapture",
                         &format!(
@@ -302,18 +404,14 @@ impl Worker for DictationWorker {
 
                 tokio_handle().spawn(async move {
                     let raw_result = ai.transcribe(&wav_bytes).await;
-                    match raw_result {
-                        Err(e) => {
-                            crate::services::crash_reporter::CrashReporter::record_event(
-                                "AIEngine",
-                                &format!("Transcription failed: {}", e),
-                            );
-                            let _ = sender_clone
-                                .output(DictationWorkerOutput::Error(format!("AI error: {}", e)));
-                        }
-                        Ok(raw_text) => {
-                            let raw_trimmed = raw_text.trim().to_string();
-                            if raw_trimmed.is_empty() {
+                    let raw_trimmed = match raw_result {
+                        Ok(raw_text) if !raw_text.trim().is_empty() => raw_text.trim().to_string(),
+                        Ok(_) => {
+                            if let Some((ref partial_raw, _)) = cached_partial
+                                && !partial_raw.trim().is_empty()
+                            {
+                                partial_raw.trim().to_string()
+                            } else {
                                 crate::services::crash_reporter::CrashReporter::record_event(
                                     "AIEngine",
                                     "Transcription returned empty text",
@@ -326,34 +424,50 @@ impl Worker for DictationWorker {
                                     sender_clone.output(DictationWorkerOutput::NoSpeechDetected);
                                 return;
                             }
-
-                            let enhanced_text = if tone.eq_ignore_ascii_case("Raw") {
-                                raw_trimmed.clone()
-                            } else {
-                                ai.enhance(&raw_trimmed, &tone).await.unwrap_or_else(|e| {
-                                    crate::services::crash_reporter::CrashReporter::record_event(
-                                        "AIEngine",
-                                        &format!("Enhancement fallback due to error: {}", e),
-                                    );
-                                    raw_trimmed.clone()
-                                })
-                            };
-
-                            let _ = storage.insert_dictation(
-                                &raw_trimmed,
-                                &enhanced_text,
-                                &tone,
-                                "dictation",
-                                duration,
-                            );
-
-                            let _ = sender_clone.output(DictationWorkerOutput::Success {
-                                raw_text: raw_trimmed,
-                                enhanced_text,
-                                duration_seconds: duration,
-                            });
                         }
-                    }
+                        Err(e) => {
+                            if let Some((ref partial_raw, _)) = cached_partial
+                                && !partial_raw.trim().is_empty()
+                            {
+                                partial_raw.trim().to_string()
+                            } else {
+                                crate::services::crash_reporter::CrashReporter::record_event(
+                                    "AIEngine",
+                                    &format!("Transcription failed: {}", e),
+                                );
+                                let _ = sender_clone.output(DictationWorkerOutput::Error(
+                                    format!("AI error: {}", e),
+                                ));
+                                return;
+                            }
+                        }
+                    };
+
+                    let enhanced_text = if tone.eq_ignore_ascii_case("Raw") {
+                        raw_trimmed.clone()
+                    } else {
+                        ai.enhance(&raw_trimmed, &tone).await.unwrap_or_else(|e| {
+                            crate::services::crash_reporter::CrashReporter::record_event(
+                                "AIEngine",
+                                &format!("Enhancement fallback due to error: {}", e),
+                            );
+                            raw_trimmed.clone()
+                        })
+                    };
+
+                    let _ = storage.insert_dictation(
+                        &raw_trimmed,
+                        &enhanced_text,
+                        &tone,
+                        "dictation",
+                        duration,
+                    );
+
+                    let _ = sender_clone.output(DictationWorkerOutput::Success {
+                        raw_text: raw_trimmed,
+                        enhanced_text,
+                        duration_seconds: duration,
+                    });
                 });
             }
         }

@@ -584,6 +584,19 @@ impl SimpleComponent for MainWindowModel {
                     mb_widgets_clone.drawer_widgets.set_status(&msg);
                     sender_for_worker.input(MainWindowMsg::DictationStatus(msg));
                 }
+                DictationWorkerOutput::PartialTranscript {
+                    raw_text,
+                    enhanced_text,
+                } => {
+                    let display_text = if !enhanced_text.is_empty() {
+                        &enhanced_text
+                    } else {
+                        &raw_text
+                    };
+                    mb_widgets_clone.drawer_widgets.set_text(display_text);
+                    crate::ui::mini_bar::copy_text_to_clipboard(display_text);
+                    mb_widgets_clone.expand_drawer();
+                }
                 DictationWorkerOutput::RecordingStarted => {
                     mb_widgets_clone
                         .record_button
@@ -618,7 +631,9 @@ impl SimpleComponent for MainWindowModel {
                         .set_recording(true);
                     mb_widgets_clone.visualizer_area.queue_draw();
 
+                    mb_widgets_clone.drawer_widgets.clear();
                     mb_widgets_clone.drawer_widgets.set_status("Recording...");
+                    mb_widgets_clone.expand_drawer();
                     sender_for_worker
                         .input(MainWindowMsg::DictationStatus("Recording...".to_string()));
                 }
@@ -742,7 +757,6 @@ impl SimpleComponent for MainWindowModel {
 
         // Connect record button to worker: Toggle recording (guarded by active model & readiness warnings)
         let worker_sender_rec = worker.sender().clone();
-        let tone_ref = model.tone.clone();
         let mb_rec_guard = minibar_widgets.clone();
         let active_cfg_rec = active_cfg.clone();
         let sender_rec_dash = sender.clone();
@@ -765,8 +779,15 @@ impl SimpleComponent for MainWindowModel {
                 return;
             }
             if mb_rec_guard.try_start_recording_or_warn() {
+                let current_tone = match mb_rec_guard.tone_dropdown.selected() {
+                    0 => "Clean",
+                    1 => "Professional",
+                    2 => "Concise",
+                    3 => "Raw",
+                    _ => "Clean",
+                };
                 let _ = worker_sender_rec.send(DictationWorkerInput::ToggleRecording {
-                    tone: tone_ref.clone(),
+                    tone: current_tone.to_string(),
                 });
             }
         });

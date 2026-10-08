@@ -158,6 +158,89 @@ fn linear_resample(samples: &[f32], orig_rate: u32, target_rate: u32) -> Vec<f32
     out
 }
 
+/// Removes residual DC offset and normalizes speech dynamic range into `[-0.80, 0.80]`
+/// when voice energy is present (`peak >= 0.004`), capping boost at `12.0x` so quiet
+/// hardware microphones (Bluetooth HFP, distant laptop/USB mics) transcribe cleanly.
+pub fn normalize_speech_samples(samples: &[f32]) -> Vec<f32> {
+    if samples.is_empty() {
+        return Vec::new();
+    }
+    let mean = samples.iter().copied().sum::<f32>() / samples.len() as f32;
+    let mut peak = 0.0f32;
+    let mut sum_sq = 0.0f32;
+    let mut centered = Vec::with_capacity(samples.len());
+    for &s in samples {
+        let c = (s - mean).clamp(-1.0, 1.0);
+        let a = c.abs();
+        if a > peak {
+            peak = a;
+        }
+        sum_sq += c * c;
+        centered.push(c);
+    }
+    let rms = (sum_sq / samples.len() as f32).sqrt();
+    if peak >= 0.004 && rms >= 0.0015 && peak < 0.75 {
+        let gain = (0.80 / peak).min(12.0);
+        for s in &mut centered {
+            *s = (*s * gain).clamp(-1.0, 1.0);
+        }
+    }
+    centered
+}
+
+/// Non-destructive live snapshot handle for streaming transcription while recording is active.
+#[derive(Clone)]
+pub struct AudioBufferSnapshot {
+    buffer: Arc<Mutex<Vec<f32>>>,
+    sample_rate: Arc<AtomicU32>,
+    is_paused: Arc<AtomicBool>,
+}
+
+impl AudioBufferSnapshot {
+    /// Captures a non-destructive 16kHz 16-bit PCM WAV snapshot of up to the most recent
+    /// `max_seconds` of recorded audio without stopping or clearing the active stream.
+    /// Returns `Ok(Some((wav_bytes, total_sample_count)))` when at least 0.40s of voice audio is available.
+    pub fn snapshot_wav(&self, max_seconds: f32) -> Result<Option<(Vec<u8>, usize)>, AudioError> {
+        if self.is_paused.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
+        let native_rate = self.sample_rate.load(Ordering::SeqCst).max(8000);
+        let min_samples = ((native_rate as f32) * 0.40) as usize;
+        let max_samples = ((native_rate as f32) * max_seconds.max(2.0)) as usize;
+
+        let (window, total_len) = {
+            let Ok(buf) = self.buffer.lock() else {
+                return Ok(None);
+            };
+            if buf.len() < min_samples {
+                return Ok(None);
+            }
+            let total = buf.len();
+            let start = total.saturating_sub(max_samples);
+            (buf[start..].to_vec(), total)
+        };
+
+        let mean = window.iter().copied().sum::<f32>() / window.len() as f32;
+        let rms = (window
+            .iter()
+            .map(|&x| {
+                let d = x - mean;
+                d * d
+            })
+            .sum::<f32>()
+            / window.len() as f32)
+            .sqrt();
+        if rms < 0.0015 {
+            return Ok(None);
+        }
+
+        let resampled = resample_to_16k(&window, native_rate)?;
+        let normalized = normalize_speech_samples(&resampled);
+        let wav = encode_pcm_wav(&normalized, 16000)?;
+        Ok(Some((wav, total_len)))
+    }
+}
+
 /// Microphone audio recorder managing hardware capture streams and real-time level metering.
 pub struct AudioRecorder {
     device_name: Option<String>,
@@ -830,6 +913,8 @@ impl AudioRecorder {
             {
                 run_pactl_status(&["set-source-port", &exclusive_source, &port_id]);
             }
+            run_pactl_status(&["set-source-mute", &exclusive_source, "0"]);
+            run_pactl_status(&["set-default-source", &exclusive_source]);
             unsafe {
                 std::env::set_var("PULSE_SOURCE", &exclusive_source);
             }
@@ -840,7 +925,7 @@ impl AudioRecorder {
             }
         }
 
-        if let Ok( mut buf) = self.buffer.lock() {
+        if let Ok(mut buf) = self.buffer.lock() {
             buf.clear();
         }
         self.is_paused.store(false, Ordering::SeqCst);
@@ -937,6 +1022,7 @@ impl AudioRecorder {
             let buffer = Arc::clone(&self.buffer);
             let is_paused = Arc::clone(&self.is_paused);
             let last_level_time = Arc::new(Mutex::new(Instant::now()));
+            let dc_state = Arc::new(Mutex::new((0.0f32, 0.0f32)));
             let stream_start_time = Instant::now();
             let level_tx = level_tx.clone();
 
@@ -958,6 +1044,7 @@ impl AudioRecorder {
                             &buffer,
                             &is_paused,
                             &last_level_time,
+                            &dc_state,
                             stream_start_time,
                             &level_tx,
                         );
@@ -976,6 +1063,7 @@ impl AudioRecorder {
                             &buffer,
                             &is_paused,
                             &last_level_time,
+                            &dc_state,
                             stream_start_time,
                             &level_tx,
                         );
@@ -996,6 +1084,7 @@ impl AudioRecorder {
                             &buffer,
                             &is_paused,
                             &last_level_time,
+                            &dc_state,
                             stream_start_time,
                             &level_tx,
                         );
@@ -1014,6 +1103,7 @@ impl AudioRecorder {
                             &buffer,
                             &is_paused,
                             &last_level_time,
+                            &dc_state,
                             stream_start_time,
                             &level_tx,
                         );
@@ -1032,6 +1122,7 @@ impl AudioRecorder {
                             &buffer,
                             &is_paused,
                             &last_level_time,
+                            &dc_state,
                             stream_start_time,
                             &level_tx,
                         );
@@ -1052,6 +1143,7 @@ impl AudioRecorder {
                             &buffer,
                             &is_paused,
                             &last_level_time,
+                            &dc_state,
                             stream_start_time,
                             &level_tx,
                         );
@@ -1069,6 +1161,7 @@ impl AudioRecorder {
                             &buffer,
                             &is_paused,
                             &last_level_time,
+                            &dc_state,
                             stream_start_time,
                             &level_tx,
                         );
@@ -1133,6 +1226,15 @@ impl AudioRecorder {
         Ok(())
     }
 
+    /// Returns a thread-safe live snapshot handle for non-destructive streaming transcription.
+    pub fn snapshot_handle(&self) -> AudioBufferSnapshot {
+        AudioBufferSnapshot {
+            buffer: Arc::clone(&self.buffer),
+            sample_rate: Arc::clone(&self.sample_rate),
+            is_paused: Arc::clone(&self.is_paused),
+        }
+    }
+
     /// Pause audio recording without destroying the stream. Discards samples and emits zeros.
     pub fn pause(&mut self) {
         self.is_paused.store(true, Ordering::SeqCst);
@@ -1143,7 +1245,8 @@ impl AudioRecorder {
         self.is_paused.store(false, Ordering::SeqCst);
     }
 
-    /// Stop recording, close stream, resample to 16 kHz, and encode to 16-bit PCM WAV bytes.
+    /// Stop recording, close stream, resample to 16 kHz, normalize speech dynamic range,
+    /// and encode to 16-bit PCM WAV bytes.
     pub fn stop_recording(&mut self) -> Result<Vec<u8>, AudioError> {
         self.is_recording.store(false, Ordering::SeqCst);
         self.is_paused.store(false, Ordering::SeqCst);
@@ -1156,7 +1259,8 @@ impl AudioRecorder {
 
         let native_rate = self.sample_rate.load(Ordering::SeqCst);
         let resampled = resample_to_16k(&samples, native_rate)?;
-        encode_pcm_wav(&resampled, 16000)
+        let normalized = normalize_speech_samples(&resampled);
+        encode_pcm_wav(&normalized, 16000)
     }
 
     /// Starts recording audio without external level sender.
@@ -1209,12 +1313,14 @@ impl Default for AudioRecorder {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_audio_input(
     data: &[f32],
     channels: usize,
     buffer: &Arc<Mutex<Vec<f32>>>,
     is_paused: &Arc<AtomicBool>,
     last_level_time: &Arc<Mutex<Instant>>,
+    dc_state: &Arc<Mutex<(f32, f32)>>,
     start_time: Instant,
     level_tx: &tokio::sync::mpsc::Sender<[f32; 5]>,
 ) {
@@ -1238,7 +1344,9 @@ fn handle_audio_input(
         return;
     }
 
-    // Downmix to mono if multi-channel
+    // Downmix to mono if multi-channel and apply 1st-order DC-blocking high-pass filter
+    // (`y[n] = x[n] - x[n-1] + 0.995 * y[n-1]`) so hardware ADC DC offsets are eliminated.
+    let (mut prev_x, mut prev_y) = dc_state.lock().map(|g| *g).unwrap_or((0.0, 0.0));
     let mono_samples: Vec<f32> = if channels > 1 {
         let frame_count = data.len() / channels;
         let mut mono = Vec::with_capacity(frame_count);
@@ -1247,12 +1355,26 @@ fn handle_audio_input(
             for ch in 0..channels {
                 sum += data[frame * channels + ch];
             }
-            mono.push(sum / channels as f32);
+            let x = sum / channels as f32;
+            let y = (x - prev_x + 0.995 * prev_y).clamp(-1.0, 1.0);
+            prev_x = x;
+            prev_y = y;
+            mono.push(y);
         }
         mono
     } else {
-        data.to_vec()
+        let mut mono = Vec::with_capacity(data.len());
+        for &x in data {
+            let y = (x - prev_x + 0.995 * prev_y).clamp(-1.0, 1.0);
+            prev_x = x;
+            prev_y = y;
+            mono.push(y);
+        }
+        mono
     };
+    if let Ok(mut g) = dc_state.lock() {
+        *g = (prev_x, prev_y);
+    }
 
     if let Ok(mut buf) = buffer.lock() {
         buf.extend_from_slice(&mono_samples);
