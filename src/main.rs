@@ -41,6 +41,30 @@ fn main() {
         return;
     }
 
+    let instance_sock_path = Config::default_path()
+        .parent()
+        .map(|p| p.join("instance.sock"))
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp/opendictate-instance.sock"));
+
+    if let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&instance_sock_path) {
+        use std::io::Write;
+        let cmd = if cli.toggle {
+            "TOGGLE\n"
+        } else if cli.minibar {
+            "MINIBAR\n"
+        } else {
+            "DASHBOARD\n"
+        };
+        if stream.write_all(cmd.as_bytes()).is_ok() {
+            log::info!(
+                "Forwarded '{}' command to existing OpenDictate instance via {:?}",
+                cmd.trim(),
+                instance_sock_path
+            );
+            return;
+        }
+    }
+
     if cli.toggle {
         log::info!("Toggle dictation flag received");
         println!("OpenDictate dictation toggle requested.");
@@ -53,6 +77,28 @@ fn main() {
 
     // Ensure background Tokio runtime is active
     let _tokio_guard = opendictate::services::dictation_worker::tokio_handle().enter();
+
+    // Start single-instance Unix domain socket listener for desktop launcher re-activation and CLI --toggle
+    if let Some(parent) = instance_sock_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::remove_file(&instance_sock_path);
+    if let Ok(listener) = std::os::unix::net::UnixListener::bind(&instance_sock_path) {
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader};
+            for stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(stream);
+                let mut line = String::new();
+                if reader.read_line(&mut line).is_ok() {
+                    match line.trim() {
+                        "TOGGLE" => MAIN_BROKER.send(MainWindowMsg::TriggerDictationToggle),
+                        "MINIBAR" => MAIN_BROKER.send(MainWindowMsg::ToggleMiniBar),
+                        _ => MAIN_BROKER.send(MainWindowMsg::ShowDashboard),
+                    }
+                }
+            }
+        });
+    }
 
     // Synchronize theme with Libadwaita StyleManager
     let theme_mode = ThemeMode::from_str(&config.theme);
@@ -151,6 +197,11 @@ fn main() {
         .with_broker(&MAIN_BROKER)
         .visible_on_activate(show_dashboard);
 
+    // Use NON_UNIQUE so strict Snap AppArmor confinement never rejects D-Bus service name
+    // registration (`org.freedesktop.DBus.Error.AccessDenied`). Single-instance IPC is
+    // handled portably across Snap, Flatpak, AppImage, and native installs via `instance.sock`.
+    relm4::main_application().set_flags(gtk4::gio::ApplicationFlags::NON_UNIQUE);
+
     let is_first_activate = std::cell::Cell::new(true);
     relm4::main_application().connect_activate(move |_| {
         if is_first_activate.replace(false) {
@@ -167,4 +218,5 @@ fn main() {
         show_dashboard,
         tray_handle,
     });
+    let _ = std::fs::remove_file(&instance_sock_path);
 }
