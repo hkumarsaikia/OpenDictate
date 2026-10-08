@@ -335,4 +335,3 @@ fn test_snapcraft_alsa_pulseaudio_routing() {
         "Snapcraft manifest must bind /usr/share/alsa and alsa-lib via layout:"
     );
 }
-

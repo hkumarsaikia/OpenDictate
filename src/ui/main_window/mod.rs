@@ -4,7 +4,6 @@ pub mod crash_dialog;
 pub mod header;
 pub mod settings_view;
 
-
 use crate::config::Config;
 use crate::services::dictation_worker::{
     DictationWorker, DictationWorkerInput, DictationWorkerOutput,
@@ -748,9 +747,8 @@ impl SimpleComponent for MainWindowModel {
         let root_rec_dash = root.clone();
         let mb_win_rec_dash = minibar_window.clone();
         minibar_widgets.record_button.connect_clicked(move |_| {
-            let is_currently_recording = mb_rec_guard
-                .record_button
-                .has_css_class("recording-active");
+            let is_currently_recording =
+                mb_rec_guard.record_button.has_css_class("recording-active");
             if !is_currently_recording
                 && let Some(readiness_warn) =
                     crate::ui::mini_bar::evaluate_recording_readiness_warning(
@@ -862,12 +860,11 @@ impl SimpleComponent for MainWindowModel {
             mb_win_dash.present();
         });
 
-        let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-        content_box.append(&header_bar);
-        settings_view.set_vexpand(true);
-        content_box.append(&settings_view);
+        let toolbar_view = libadwaita::ToolbarView::new();
+        toolbar_view.add_top_bar(&header_bar);
+        toolbar_view.set_content(Some(&settings_view));
 
-        root.set_content(Some(&content_box));
+        root.set_content(Some(&toolbar_view));
 
         // Setup Main Menu actions
         setup_main_menu_actions(&root, active_cfg.clone());
@@ -1187,12 +1184,11 @@ pub fn build_main_window(
     let (header_bar, header_widgets) = header::build_header_bar(config, storage);
     let (settings_view, settings_widgets) = settings_view::build_settings_view(config);
 
-    let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    content_box.append(&header_bar);
-    settings_view.set_vexpand(true);
-    content_box.append(&settings_view);
+    let toolbar_view = libadwaita::ToolbarView::new();
+    toolbar_view.add_top_bar(&header_bar);
+    toolbar_view.set_content(Some(&settings_view));
 
-    window.set_content(Some(&content_box));
+    window.set_content(Some(&toolbar_view));
 
     let model = std::rc::Rc::new(std::cell::RefCell::new(MainWindowModel::new(
         config.clone(),

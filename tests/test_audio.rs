@@ -465,4 +465,3 @@ fn test_should_use_default_pulse_device_for_standard_profiles() {
         "plughw:CARD=Mic,DEV=0"
     )));
 }
-

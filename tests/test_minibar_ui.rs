@@ -589,4 +589,3 @@ fn test_minibar_expand_drawer_and_clipboard_helper() {
         opendictate::ui::mini_bar::copy_text_to_clipboard("Test persistent clipboard copy");
     }
 }
-

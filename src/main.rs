@@ -112,7 +112,7 @@ fn main() {
         );
         StorageService::in_memory().expect("Failed to initialize in-memory fallback database")
     });
-    let _ = storage.seed_demo_dictations_if_empty();
+    let _ = storage.purge_legacy_demo_dictations();
 
     // Start DBus StatusNotifierItem system tray in background
     let callbacks = TrayCallbacks {

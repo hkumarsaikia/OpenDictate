@@ -365,6 +365,28 @@ impl StorageService {
         Ok(())
     }
 
+    /// Removes any previously seeded demo/test dictation records from the SQLite database.
+    pub fn purge_legacy_demo_dictations(&self) -> Result<(), StorageError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| StorageError::LockError(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM dictations WHERE processed_text IN (
+                'Welcome to OpenDictate. Press your shortcut or click the microphone to dictate text.',
+                'Testing real-time speech-to-text transcription on desktop Linux with whisper.cpp.',
+                'The quick brown fox jumps over the lazy dog. Hover over this dictation to see the broader full transcript in the hover tooltip window.'
+            ) OR raw_text IN (
+                'Welcome to OpenDictate. Press your shortcut or click the microphone to dictate text.',
+                'Testing real time speech to text transcription on desktop Linux with whisper.cpp.',
+                'The quick brown fox jumps over the lazy dog. Hover over this dictation to see the broader full transcript in the hover tooltip window.'
+            )",
+            [],
+        )?;
+        let _ = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE");
+        Ok(())
+    }
+
     /// Inserts a new meeting record and returns its auto-generated ID.
     pub fn insert_meeting(
         &self,

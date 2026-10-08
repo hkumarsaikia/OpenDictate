@@ -1381,3 +1381,52 @@ fn test_hotkey_gtk_accelerator_conversion() {
         "<Super>F9"
     );
 }
+
+#[test]
+fn test_embedded_symbolic_icons_and_purge_legacy_demo_dictations() {
+    let storage = StorageService::in_memory().expect("in_memory storage");
+    storage
+        .seed_demo_dictations_if_empty()
+        .expect("seed demo dictations");
+    storage
+        .insert_dictation(
+            "Real user dictation",
+            "Real user dictation",
+            "Clean",
+            "local",
+            3.5,
+        )
+        .expect("insert real dictation");
+    assert_eq!(storage.list_dictations().unwrap().len(), 4);
+
+    storage
+        .purge_legacy_demo_dictations()
+        .expect("purge legacy demo dictations");
+    let remaining = storage.list_dictations().unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].processed_text, "Real user dictation");
+
+    if gtk4::is_initialized_main_thread() || (!gtk4::is_initialized() && gtk4::init().is_ok()) {
+        opendictate::ui::theme::ensure_app_icons_registered();
+        if let Some(display) = gtk4::gdk::Display::default() {
+            let icon_theme = gtk4::IconTheme::for_display(&display);
+            for icon in [
+                "weather-clear-symbolic",
+                "weather-clear-night-symbolic",
+                "org.gnome.Settings-symbolic",
+                "media-record-symbolic",
+                "media-playback-pause-symbolic",
+                "edit-delete-symbolic",
+                "user-trash-symbolic",
+                "view-conceal-symbolic",
+                "view-reveal-symbolic",
+            ] {
+                assert!(
+                    icon_theme.has_icon(icon),
+                    "IconTheme must resolve embedded symbolic icon '{}'",
+                    icon
+                );
+            }
+        }
+    }
+}

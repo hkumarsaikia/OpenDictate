@@ -162,8 +162,7 @@ pub fn ensure_main_menu_css() {
         color: #e5a50a;
     }
     "#;
-    #[allow(deprecated)]
-    provider.load_from_data(css);
+    provider.load_from_string(css);
     if let Some(display) = gtk4::gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
             &display,
@@ -828,15 +827,13 @@ pub fn refresh_history_list(
         let lang_copied = lang.to_string();
         let lang_copy_reset = lang.to_string();
         copy_btn.connect_clicked(move |_| {
-            if let Some(display) = gtk4::gdk::Display::default() {
-                display.clipboard().set_text(&copy_text);
-                copy_btn_clone.set_tooltip_text(Some(tr("copied", &lang_copied)));
-                let reset_btn = copy_btn_clone.clone();
-                let reset_lang = lang_copy_reset.clone();
-                gtk4::glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
-                    reset_btn.set_tooltip_text(Some(tr("copy", &reset_lang)));
-                });
-            }
+            crate::ui::mini_bar::copy_text_to_clipboard(&copy_text);
+            copy_btn_clone.set_tooltip_text(Some(tr("copied", &lang_copied)));
+            let reset_btn = copy_btn_clone.clone();
+            let reset_lang = lang_copy_reset.clone();
+            gtk4::glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
+                reset_btn.set_tooltip_text(Some(tr("copy", &reset_lang)));
+            });
         });
         actions_box.append(&copy_btn);
 
@@ -1156,150 +1153,8 @@ pub const DEFAULT_LOCAL_MODEL_LINKS: &[(&str, &str)] = &[
     ),
 ];
 
-/// Libadwaita 1.0+ compatible modal dialog built on `libadwaita::Window`.
-#[derive(Clone, Debug)]
-pub struct DialogCompat {
-    pub window: libadwaita::Window,
-}
-
-impl DialogCompat {
-    pub fn new(title: &str, width: i32, height: i32) -> Self {
-        let window = libadwaita::Window::builder()
-            .title(title)
-            .default_width(width)
-            .default_height(height)
-            .modal(true)
-            .build();
-        Self { window }
-    }
-
-    pub fn title(&self) -> gtk4::glib::GString {
-        self.window.title().unwrap_or_default()
-    }
-
-    pub fn child(&self) -> Option<gtk4::Widget> {
-        self.window.content()
-    }
-
-    pub fn set_child(&self, child: Option<&impl IsA<gtk4::Widget>>) {
-        self.window.set_content(child);
-    }
-
-    pub fn close(&self) {
-        self.window.close();
-    }
-
-    pub fn present(&self, parent: Option<&impl IsA<gtk4::Widget>>) {
-        if let Some(p) = parent {
-            let parent_win = p
-                .as_ref()
-                .downcast_ref::<gtk4::Window>()
-                .cloned()
-                .or_else(|| p.as_ref().root().and_then(|r| r.downcast::<gtk4::Window>().ok()));
-            self.window.set_transient_for(parent_win.as_ref());
-        }
-        self.window.present();
-    }
-
-    pub fn upcast<T: IsA<gtk4::Widget>>(self) -> T {
-        self.window.upcast::<gtk4::Widget>().downcast::<T>().unwrap()
-    }
-}
-
-impl std::ops::Deref for DialogCompat {
-    type Target = libadwaita::Window;
-    fn deref(&self) -> &Self::Target {
-        &self.window
-    }
-}
-
-/// Libadwaita 1.0+ compatible About dialog built on `libadwaita::Window`.
-#[derive(Clone, Debug)]
-pub struct AboutDialogCompat {
-    pub window: libadwaita::Window,
-    application_name: gtk4::glib::GString,
-    application_icon: gtk4::glib::GString,
-    version: gtk4::glib::GString,
-    developer_name: gtk4::glib::GString,
-    website: gtk4::glib::GString,
-    support_url: gtk4::glib::GString,
-    developers: Vec<gtk4::glib::GString>,
-    designers: Vec<gtk4::glib::GString>,
-    comments: gtk4::glib::GString,
-    debug_info: gtk4::glib::GString,
-}
-
-impl AboutDialogCompat {
-    pub fn application_name(&self) -> gtk4::glib::GString {
-        self.application_name.clone()
-    }
-
-    pub fn application_icon(&self) -> gtk4::glib::GString {
-        self.application_icon.clone()
-    }
-
-    pub fn version(&self) -> gtk4::glib::GString {
-        self.version.clone()
-    }
-
-    pub fn developer_name(&self) -> gtk4::glib::GString {
-        self.developer_name.clone()
-    }
-
-    pub fn website(&self) -> gtk4::glib::GString {
-        self.website.clone()
-    }
-
-    pub fn support_url(&self) -> gtk4::glib::GString {
-        self.support_url.clone()
-    }
-
-    pub fn developers(&self) -> Vec<gtk4::glib::GString> {
-        self.developers.clone()
-    }
-
-    pub fn designers(&self) -> Vec<gtk4::glib::GString> {
-        self.designers.clone()
-    }
-
-    pub fn comments(&self) -> gtk4::glib::GString {
-        self.comments.clone()
-    }
-
-    pub fn debug_info(&self) -> gtk4::glib::GString {
-        self.debug_info.clone()
-    }
-
-    pub fn child(&self) -> Option<gtk4::Widget> {
-        self.window.content()
-    }
-
-    pub fn upcast<T: IsA<gtk4::Widget>>(self) -> T {
-        self.window.upcast::<gtk4::Widget>().downcast::<T>().unwrap()
-    }
-
-    pub fn present(&self, parent: Option<&impl IsA<gtk4::Widget>>) {
-        if let Some(p) = parent {
-            let parent_win = p
-                .as_ref()
-                .downcast_ref::<gtk4::Window>()
-                .cloned()
-                .or_else(|| p.as_ref().root().and_then(|r| r.downcast::<gtk4::Window>().ok()));
-            self.window.set_transient_for(parent_win.as_ref());
-        }
-        self.window.present();
-    }
-}
-
-impl std::ops::Deref for AboutDialogCompat {
-    type Target = libadwaita::Window;
-    fn deref(&self) -> &Self::Target {
-        &self.window
-    }
-}
-
-/// Constructs the native Libadwaita About dialog (compatible with Libadwaita 1.0/1.1+).
-pub fn build_about_dialog(config: &Config) -> AboutDialogCompat {
+/// Constructs the native Libadwaita About dialog.
+pub fn build_about_dialog(config: &Config) -> libadwaita::AboutDialog {
     crate::ui::theme::ensure_app_icons_registered();
     ensure_main_menu_css();
     let mut debug_info = generate_troubleshooting_diagnostics(config);
@@ -1314,187 +1169,220 @@ pub fn build_about_dialog(config: &Config) -> AboutDialogCompat {
 
     let comments_text = "OpenDictate is a native Linux voice dictation and AI speech-to-text application. It combines private offline transcription with multi-provider Cloud AI models to turn spoken voice into clean, polished text.";
 
-    let window = libadwaita::Window::builder()
-        .title("About OpenDictate")
-        .default_width(480)
-        .default_height(560)
-        .modal(true)
+    let dialog = libadwaita::AboutDialog::builder()
+        .application_name("OpenDictate")
+        .application_icon(app_icon)
+        .version("2.0.0")
+        .developer_name("OpenDictate Team")
+        .issue_url("https://github.com/hkumarsaikia/OpenDictate/issues")
+        .copyright("© 2026 OpenDictate Team")
+        .license_type(gtk4::License::MitX11)
+        .comments(comments_text)
+        .designers(vec!["H. K. Saikia"])
+        .debug_info(&debug_info)
+        .debug_info_filename("opendictate-diagnostics.txt")
         .build();
 
-    let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    let header = libadwaita::HeaderBar::new();
-    content_box.append(&header);
+    // 1. Minimal legal section for whisper.cpp
+    dialog.add_legal_section(
+        "whisper.cpp",
+        Some("© Georgi Gerganov"),
+        gtk4::License::MitX11,
+        None,
+    );
 
-    let page = libadwaita::PreferencesPage::new();
-    page.set_vexpand(true);
+    // 2. Minimal legal section for OpenAI Whisper models
+    dialog.add_legal_section(
+        "OpenAI Whisper Models",
+        Some("© OpenAI"),
+        gtk4::License::MitX11,
+        None,
+    );
 
-    // Hero Group
-    let hero_group = libadwaita::PreferencesGroup::new();
-    let hero_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Vertical)
-        .spacing(8)
-        .halign(gtk4::Align::Center)
-        .margin_top(8)
-        .margin_bottom(8)
-        .build();
+    // 3. Core technologies acknowledgments
+    dialog.add_acknowledgement_section(
+        Some("Core Open Source Technologies"),
+        &[
+            "whisper.cpp https://github.com/ggerganov/whisper.cpp",
+            "Relm4 GUI Framework https://relm4.org",
+            "GTK4 & Libadwaita https://gitlab.gnome.org/GNOME/libadwaita",
+            "CPAL Audio Engine https://github.com/RustAudio/cpal",
+            "OpenAI Whisper https://github.com/openai/whisper",
+        ],
+    );
 
-    let icon_img = gtk4::Image::from_icon_name(app_icon);
-    icon_img.set_pixel_size(72);
-    hero_box.append(&icon_img);
+    // 4. Inject full links for the 5 default downloadable Local AI models into the Details subpage (replacing the Website button)
+    inject_details_model_links(&dialog);
 
-    let app_title = gtk4::Label::builder()
-        .label("OpenDictate")
-        .css_classes(vec!["title-1".to_string()])
-        .build();
-    hero_box.append(&app_title);
+    // 5. Inject "Buy me a coffee" option below "Acknowledgements" on the About main page
+    inject_buy_me_a_coffee_row(&dialog);
 
-    let dev_lbl = gtk4::Label::builder()
-        .label("OpenDictate Team")
-        .css_classes(vec!["dim-label".to_string()])
-        .build();
-    hero_box.append(&dev_lbl);
+    dialog
+}
 
-    let ver_lbl = gtk4::Label::builder()
-        .label("2.0.0")
-        .css_classes(vec!["caption".to_string(), "numeric".to_string()])
-        .build();
-    hero_box.append(&ver_lbl);
-
-    let comments_lbl = gtk4::Label::builder()
-        .label(comments_text)
-        .wrap(true)
-        .justify(gtk4::Justification::Center)
-        .max_width_chars(46)
-        .margin_top(6)
-        .build();
-    hero_box.append(&comments_lbl);
-    hero_group.add(&hero_box);
-    page.add(&hero_group);
-
-    // Default downloadable Local AI models group
-    let models_group = libadwaita::PreferencesGroup::new();
-    models_group.set_title("Default Local AI Models");
-    for (model_name, model_url) in DEFAULT_LOCAL_MODEL_LINKS {
-        let row = libadwaita::ActionRow::builder()
-            .title(*model_name)
-            .subtitle(*model_url)
-            .subtitle_lines(1)
-            .activatable(true)
-            .build();
-        let ext_icon = gtk4::Image::from_icon_name("adw-external-link-symbolic");
-        row.add_suffix(&ext_icon);
-
-        let url_str = (*model_url).to_string();
-        row.connect_activated(move |r| {
-            let parent_win = r.root().and_then(|rt| rt.downcast::<gtk4::Window>().ok());
-            open_external_url(&url_str, parent_win.as_ref());
-        });
-        models_group.add(&row);
+/// Collects all `libadwaita::ActionRow`s whose title matches `target_title` (ignoring `_` mnemonics and case).
+fn find_all_action_rows_by_title(
+    root: &gtk4::Widget,
+    target_title: &str,
+    out: &mut Vec<libadwaita::ActionRow>,
+) {
+    if let Some(row) = root.downcast_ref::<libadwaita::ActionRow>() {
+        let clean_title = row.title().replace('_', "").to_lowercase();
+        if clean_title.contains(&target_title.to_lowercase()) {
+            out.push(row.clone());
+        }
     }
-    page.add(&models_group);
+    let mut child = root.first_child();
+    while let Some(c) = child {
+        find_all_action_rows_by_title(&c, target_title, out);
+        child = c.next_sibling();
+    }
+}
 
-    // Information, Acknowledgements & Support group
-    let info_group = libadwaita::PreferencesGroup::new();
+/// Recursively searches a widget tree for a `libadwaita::ActionRow` whose title matches `target_title`
+/// (ignoring mnemonic underscores and case).
+fn find_action_row_by_title(
+    root: &gtk4::Widget,
+    target_title: &str,
+) -> Option<libadwaita::ActionRow> {
+    let mut rows = Vec::new();
+    find_all_action_rows_by_title(root, target_title, &mut rows);
+    rows.into_iter().next()
+}
 
-    let issue_row = libadwaita::ActionRow::builder()
-        .title("Report an Issue")
-        .activatable(true)
-        .build();
-    issue_row.add_suffix(&gtk4::Image::from_icon_name("adw-external-link-symbolic"));
-    issue_row.connect_activated(move |r| {
-        let parent_win = r.root().and_then(|rt| rt.downcast::<gtk4::Window>().ok());
-        open_external_url(
-            "https://github.com/hkumarsaikia/OpenDictate/issues",
-            parent_win.as_ref(),
-        );
-    });
-    info_group.add(&issue_row);
+/// Injects the 5 default downloadable Local AI model full URLs into the About -> Details subpage
+/// in place of the removed "Website" button.
+fn inject_details_model_links(dialog: &libadwaita::AboutDialog) {
+    let root_widget = dialog
+        .child()
+        .unwrap_or_else(|| dialog.clone().upcast::<gtk4::Widget>());
 
-    let diag_row = libadwaita::ActionRow::builder()
-        .title("Troubleshooting & Diagnostics")
-        .activatable(true)
-        .build();
-    diag_row.add_suffix(&gtk4::Image::from_icon_name("go-next-symbolic"));
-    let cfg_for_diag = config.clone();
-    let win_weak_diag = window.downgrade();
-    diag_row.connect_activated(move |_| {
-        if let Some(w) = win_weak_diag.upgrade() {
-            show_troubleshooting_dialog(&w, &cfg_for_diag);
+    let mut website_rows = Vec::new();
+    find_all_action_rows_by_title(&root_widget, "Website", &mut website_rows);
+
+    // Ensure all Website rows remain hidden
+    for w_row in &website_rows {
+        w_row.set_visible(false);
+    }
+
+    // The second Website row lives inside the Details subpage's AdwPreferencesGroup -> GtkListBox
+    if let Some(details_web_row) = website_rows.last()
+        && let Some(list_box) = details_web_row
+            .parent()
+            .and_then(|p| p.downcast::<gtk4::ListBox>().ok())
+    {
+        list_box.set_visible(true);
+        // Make sure ancestor AdwPreferencesGroup is visible and titled
+        let mut anc = list_box.parent();
+        while let Some(a) = anc {
+            if let Some(group) = a.downcast_ref::<libadwaita::PreferencesGroup>() {
+                group.set_title("Default Local AI Models");
+                group.set_visible(true);
+                break;
+            }
+            anc = a.parent();
         }
-    });
-    info_group.add(&diag_row);
 
-    let ack_row = libadwaita::ActionRow::builder()
-        .title("Acknowledgements")
-        .subtitle("Design by H. K. Saikia • Core Open Source Technologies")
-        .activatable(true)
-        .build();
-    ack_row.add_suffix(&gtk4::Image::from_icon_name("go-next-symbolic"));
-    let win_weak_ack = window.downgrade();
-    ack_row.connect_activated(move |_| {
-        if let Some(w) = win_weak_ack.upgrade() {
-            show_credits_dialog(&w);
-        }
-    });
-    info_group.add(&ack_row);
+        for (model_name, model_url) in DEFAULT_LOCAL_MODEL_LINKS {
+            let row = libadwaita::ActionRow::builder()
+                .title(*model_name)
+                .subtitle(*model_url)
+                .subtitle_lines(1)
+                .activatable(true)
+                .build();
+            let ext_icon = gtk4::Image::from_icon_name("adw-external-link-symbolic");
+            row.add_suffix(&ext_icon);
 
-    let legal_row = libadwaita::ActionRow::builder()
-        .title("Legal")
-        .subtitle("MIT License • whisper.cpp • OpenAI Whisper Models")
-        .activatable(true)
-        .build();
-    legal_row.add_suffix(&gtk4::Image::from_icon_name("go-next-symbolic"));
-    let win_weak_legal = window.downgrade();
-    legal_row.connect_activated(move |_| {
-        if let Some(w) = win_weak_legal.upgrade() {
-            show_legal_dialog(&w);
+            let url_str = (*model_url).to_string();
+            row.connect_activated(move |r| {
+                let parent_win = r.root().and_then(|rt| rt.downcast::<gtk4::Window>().ok());
+                open_external_url(&url_str, parent_win.as_ref());
+            });
+
+            list_box.append(&row);
         }
-    });
-    info_group.add(&legal_row);
+    }
+}
+
+/// Recursively finds the last `gtk4::ListBox` with `.boxed-list` CSS class in the main page of `AboutDialog`.
+fn find_boxed_list_boxes(root: &gtk4::Widget, out: &mut Vec<gtk4::ListBox>) {
+    if let Some(lb) = root.downcast_ref::<gtk4::ListBox>()
+        && lb.has_css_class("boxed-list")
+    {
+        out.push(lb.clone());
+    }
+    let mut child = root.first_child();
+    while let Some(c) = child {
+        find_boxed_list_boxes(&c, out);
+        child = c.next_sibling();
+    }
+}
+
+/// Injects the "Buy me a coffee" row directly below "Acknowledgements" on the About main page.
+fn inject_buy_me_a_coffee_row(dialog: &libadwaita::AboutDialog) {
+    let root_widget = dialog
+        .child()
+        .unwrap_or_else(|| dialog.clone().upcast::<gtk4::Widget>());
 
     let coffee_row = libadwaita::ActionRow::builder()
         .title("Buy me a coffee")
         .activatable(true)
         .build();
-    coffee_row.add_suffix(&gtk4::Image::from_icon_name("go-next-symbolic"));
-    let win_weak_coffee = window.downgrade();
+    let arrow = gtk4::Image::from_icon_name("go-next-symbolic");
+    coffee_row.add_suffix(&arrow);
+
+    let dialog_weak = dialog.downgrade();
     coffee_row.connect_activated(move |_| {
-        if let Some(w) = win_weak_coffee.upgrade() {
+        if let Some(dlg) = dialog_weak.upgrade() {
             let coffee_dlg = build_buy_me_a_coffee_dialog();
-            coffee_dlg.present(Some(&w));
+            coffee_dlg.present(Some(&dlg));
         }
     });
-    info_group.add(&coffee_row);
 
-    page.add(&info_group);
-    content_box.append(&page);
-    window.set_content(Some(&content_box));
+    let target_row = find_action_row_by_title(&root_widget, "Acknowledgements")
+        .or_else(|| find_action_row_by_title(&root_widget, "Legal"))
+        .or_else(|| find_action_row_by_title(&root_widget, "Credits"));
 
-    AboutDialogCompat {
-        window,
-        application_name: "OpenDictate".into(),
-        application_icon: app_icon.into(),
-        version: "2.0.0".into(),
-        developer_name: "OpenDictate Team".into(),
-        website: "".into(),
-        support_url: "".into(),
-        developers: Vec::new(),
-        designers: vec!["H. K. Saikia".into()],
-        comments: comments_text.into(),
-        debug_info: debug_info.into(),
+    if let Some(ack_row) = target_row
+        && let Some(parent) = ack_row.parent()
+    {
+        if let Some(list_box) = parent.downcast_ref::<gtk4::ListBox>() {
+            list_box.append(&coffee_row);
+            return;
+        } else if let Some(group) = parent.downcast_ref::<libadwaita::PreferencesGroup>() {
+            group.add(&coffee_row);
+            return;
+        } else if let Some(pbox) = parent.downcast_ref::<gtk4::Box>() {
+            pbox.append(&coffee_row);
+            return;
+        }
+    }
+
+    let mut list_boxes = Vec::new();
+    find_boxed_list_boxes(&root_widget, &mut list_boxes);
+    if let Some(last_lb) = list_boxes.last() {
+        last_lb.append(&coffee_row);
+    } else if let Some(child) = dialog.child()
+        && let Some(pbox) = child.downcast_ref::<gtk4::Box>()
+    {
+        pbox.append(&coffee_row);
     }
 }
 
 /// Constructs and returns the aesthetic, modern "Buy Me a Coffee" dialog with
 /// $2, $5, $10, $20 presets and a "$ Custom amount" entry.
-pub fn build_buy_me_a_coffee_dialog() -> DialogCompat {
+pub fn build_buy_me_a_coffee_dialog() -> libadwaita::Dialog {
     ensure_main_menu_css();
 
-    let dialog = DialogCompat::new("Buy Me a Coffee", 420, 410);
+    let dialog = libadwaita::Dialog::builder()
+        .title("Buy Me a Coffee")
+        .content_width(420)
+        .content_height(410)
+        .build();
 
-    let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    let toolbar_view = libadwaita::ToolbarView::new();
     let header = libadwaita::HeaderBar::new();
-    content_box.append(&header);
+    toolbar_view.add_top_bar(&header);
 
     let main_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
@@ -1503,7 +1391,6 @@ pub fn build_buy_me_a_coffee_dialog() -> DialogCompat {
         .margin_bottom(24)
         .margin_start(24)
         .margin_end(24)
-        .vexpand(true)
         .build();
 
     // Hero section (clean, minimal — without extra explanatory sentences)
@@ -1582,17 +1469,18 @@ pub fn build_buy_me_a_coffee_dialog() -> DialogCompat {
 
     main_box.append(&grid);
 
-    // "$ Custom amount" using AdwPreferencesGroup + EntryRowCompat (ActionRow + Entry)
+    // "$ Custom amount" using AdwPreferencesGroup + AdwEntryRow
     let custom_group = libadwaita::PreferencesGroup::new();
-    let custom_entry =
-        crate::ui::main_window::settings_view::EntryRowCompat::with_title("Custom amount");
+    let custom_entry = libadwaita::EntryRow::builder()
+        .title("Custom amount")
+        .build();
     let dollar_prefix = gtk4::Label::builder()
         .label("$")
         .css_classes(vec!["title-4".to_string(), "dim-label".to_string()])
         .margin_start(8)
         .build();
     custom_entry.add_prefix(&dollar_prefix);
-    custom_group.add(&*custom_entry);
+    custom_group.add(&custom_entry);
     main_box.append(&custom_group);
 
     // Primary Support CTA button
@@ -1652,7 +1540,7 @@ pub fn build_buy_me_a_coffee_dialog() -> DialogCompat {
     // Wire Support button click to open external sponsor/coffee URL
     {
         let sel_amt = selected_amount.clone();
-        let dlg_weak = dialog.window.downgrade();
+        let dlg_weak = dialog.downgrade();
         support_btn.connect_clicked(move |btn| {
             let amt = sel_amt.borrow().clone();
             let parent_win = btn.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
@@ -1664,17 +1552,18 @@ pub fn build_buy_me_a_coffee_dialog() -> DialogCompat {
         });
     }
 
-    content_box.append(&main_box);
-    dialog.set_child(Some(&content_box));
+    toolbar_view.set_content(Some(&main_box));
+    dialog.set_child(Some(&toolbar_view));
     dialog
 }
 
 /// Displays the Troubleshooting Dialog with system diagnostics and copy button.
 pub fn show_troubleshooting_dialog(parent: &impl IsA<gtk4::Widget>, config: &Config) {
-    let dialog = DialogCompat::new("Troubleshooting & Diagnostics", 560, 480);
-
-    let outer_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    outer_box.append(&libadwaita::HeaderBar::new());
+    let dialog = libadwaita::Dialog::builder()
+        .title("Troubleshooting & Diagnostics")
+        .content_width(560)
+        .content_height(480)
+        .build();
 
     let vbox = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
@@ -1683,7 +1572,6 @@ pub fn show_troubleshooting_dialog(parent: &impl IsA<gtk4::Widget>, config: &Con
         .margin_bottom(16)
         .margin_start(16)
         .margin_end(16)
-        .vexpand(true)
         .build();
 
     let header_box = gtk4::Box::builder()
@@ -1768,17 +1656,17 @@ pub fn show_troubleshooting_dialog(parent: &impl IsA<gtk4::Widget>, config: &Con
     footer_box.append(&issue_btn);
 
     vbox.append(&footer_box);
-    outer_box.append(&vbox);
-    dialog.set_child(Some(&outer_box));
+    dialog.set_child(Some(&vbox));
     dialog.present(Some(parent));
 }
 
 /// Displays the Credits Dialog.
 pub fn show_credits_dialog(parent: &impl IsA<gtk4::Widget>) {
-    let dialog = DialogCompat::new("Credits", 500, 400);
-
-    let outer_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    outer_box.append(&libadwaita::HeaderBar::new());
+    let dialog = libadwaita::Dialog::builder()
+        .title("Credits")
+        .content_width(500)
+        .content_height(400)
+        .build();
 
     let vbox = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
@@ -1787,7 +1675,6 @@ pub fn show_credits_dialog(parent: &impl IsA<gtk4::Widget>) {
         .margin_bottom(20)
         .margin_start(20)
         .margin_end(20)
-        .vexpand(true)
         .build();
 
     let title_lbl = gtk4::Label::builder()
@@ -1821,17 +1708,17 @@ Core Technologies:
         .build();
     vbox.append(&label);
 
-    outer_box.append(&vbox);
-    dialog.set_child(Some(&outer_box));
+    dialog.set_child(Some(&vbox));
     dialog.present(Some(parent));
 }
 
 /// Displays the Legal Dialog.
 pub fn show_legal_dialog(parent: &impl IsA<gtk4::Widget>) {
-    let dialog = DialogCompat::new("Legal & Privacy Architecture", 520, 440);
-
-    let outer_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    outer_box.append(&libadwaita::HeaderBar::new());
+    let dialog = libadwaita::Dialog::builder()
+        .title("Legal & Privacy Architecture")
+        .content_width(520)
+        .content_height(440)
+        .build();
 
     let vbox = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
@@ -1840,7 +1727,6 @@ pub fn show_legal_dialog(parent: &impl IsA<gtk4::Widget>) {
         .margin_bottom(20)
         .margin_start(20)
         .margin_end(20)
-        .vexpand(true)
         .build();
 
     let title_lbl = gtk4::Label::builder()
@@ -1875,17 +1761,31 @@ Third-Party Components & Models:
         .build();
     vbox.append(&label);
 
-    outer_box.append(&vbox);
-    dialog.set_child(Some(&outer_box));
+    dialog.set_child(Some(&vbox));
     dialog.present(Some(parent));
 }
 
 /// Launch an external web URL cleanly without leaking any browser stderr/stdout into the terminal.
-/// Compatible with GTK 4.0+ by dispatching to `spawn_detached_browser` on the GLib main loop.
-pub fn open_external_url(uri: &str, _parent_window: Option<&gtk4::Window>) {
+///
+/// First attempts to use GTK 4.10+ `UriLauncher` (which offloads to `xdg-desktop-portal`
+/// `org.freedesktop.portal.OpenURI` via D-Bus, isolating process stdout/stderr from the app's terminal).
+/// If that fails or if no parent window is available, falls back to spawning `xdg-open`
+/// in a completely detached process group with all standard I/O (stdin, stdout, stderr)
+/// redirected to `/dev/null`.
+pub fn open_external_url(uri: &str, parent_window: Option<&gtk4::Window>) {
     let uri_string = uri.to_string();
-    gtk4::glib::idle_add_local_once(move || {
-        spawn_detached_browser(&uri_string);
+    let launcher = gtk4::UriLauncher::new(&uri_string);
+    let fallback_uri = uri_string.clone();
+
+    launcher.launch(parent_window, gtk4::gio::Cancellable::NONE, move |result| {
+        if let Err(err) = result {
+            log::warn!(
+                "GtkUriLauncher could not open '{}': {}. Falling back to detached process.",
+                fallback_uri,
+                err
+            );
+            spawn_detached_browser(&fallback_uri);
+        }
     });
 }
 

@@ -289,7 +289,6 @@ impl AudioRecorder {
         ]
     }
 
-
     /// Classify the active hardware microphone profile (`"Handsfree"`, `"Headphones"`, or `"System Default"`)
     /// from `pactl list sources` output, `pactl list cards` output, and fallback raw device names.
     /// Loopback `.monitor` sources are strictly excluded so speaker monitors never trigger false positives.

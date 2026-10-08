@@ -37,11 +37,19 @@ fn test_crash_report_generation_and_privacy_sanitization() {
     assert!(!report.message.contains(&fake_home));
     assert!(report.message.contains("~/recordings/chunk.pcm"));
     assert!(!report.body.contains(&fake_home));
-    assert!(!report.body.contains("gsk_super_secret_key_should_never_leak"));
+    assert!(
+        !report
+            .body
+            .contains("gsk_super_secret_key_should_never_leak")
+    );
     assert!(report.body.contains("Configured (redacted)"));
     assert!(report.body.contains("Detected Input Devices:"));
     assert!(report.body.contains("[Subsystem Health & Recent Events]"));
-    assert!(report.body.contains("Microphone stream captured 0 speech frames"));
+    assert!(
+        report
+            .body
+            .contains("Microphone stream captured 0 speech frames")
+    );
     assert!(report.body.contains("### User Notes (Editable)"));
     assert!(report.body.contains("### Stack Backtrace"));
 }
@@ -109,7 +117,10 @@ fn test_crash_dialog_editable_report_and_states() {
     // Verify the crash report is displayed and editable on the same screen as "Send Crash Report"
     assert!(widgets.report_text_view.is_editable());
     assert!(widgets.report_text_view.is_monospace());
-    assert_eq!(widgets.send_button.label().as_deref(), Some("Send Crash Report"));
+    assert_eq!(
+        widgets.send_button.label().as_deref(),
+        Some("Send Crash Report")
+    );
     assert_eq!(widgets.copy_button.label().as_deref(), Some("Copy Report"));
     assert_eq!(widgets.dismiss_button.label().as_deref(), Some("Dismiss"));
     assert!(widgets.current_body().contains("ERR_NODE_SUSPENDED"));
@@ -291,4 +302,3 @@ fn render_crash_window_screenshots_and_verify_live_relay() {
     widgets_err.window.close();
     pump(100);
 }
-

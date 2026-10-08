@@ -61,7 +61,158 @@ impl std::fmt::Display for ThemeMode {
 const SVG_ICON_DARK: &str = include_str!("assets/brand/opendictate-dark.svg");
 const SVG_ICON_LIGHT: &str = include_str!("assets/brand/opendictate-light.svg");
 
-/// Ensures the OpenDictate dark, light, and standard SVG icons are installed in the user's
+const SYMBOLIC_ICONS: &[(&str, &str)] = &[
+    (
+        "adw-external-link-symbolic.svg",
+        include_str!("assets/symbolic/adw-external-link-symbolic.svg"),
+    ),
+    (
+        "check-plain-symbolic.svg",
+        include_str!("assets/symbolic/check-plain-symbolic.svg"),
+    ),
+    (
+        "content-loading-symbolic.svg",
+        include_str!("assets/symbolic/content-loading-symbolic.svg"),
+    ),
+    (
+        "dialog-error-symbolic.svg",
+        include_str!("assets/symbolic/dialog-error-symbolic.svg"),
+    ),
+    (
+        "dialog-warning-symbolic.svg",
+        include_str!("assets/symbolic/dialog-warning-symbolic.svg"),
+    ),
+    (
+        "edit-clear-symbolic.svg",
+        include_str!("assets/symbolic/edit-clear-symbolic.svg"),
+    ),
+    (
+        "edit-copy-symbolic.svg",
+        include_str!("assets/symbolic/edit-copy-symbolic.svg"),
+    ),
+    (
+        "edit-delete-symbolic.svg",
+        include_str!("assets/symbolic/edit-delete-symbolic.svg"),
+    ),
+    (
+        "edit-find-symbolic.svg",
+        include_str!("assets/symbolic/edit-find-symbolic.svg"),
+    ),
+    (
+        "emblem-ok-symbolic.svg",
+        include_str!("assets/symbolic/emblem-ok-symbolic.svg"),
+    ),
+    (
+        "emblem-system-symbolic.svg",
+        include_str!("assets/symbolic/emblem-system-symbolic.svg"),
+    ),
+    (
+        "go-next-symbolic.svg",
+        include_str!("assets/symbolic/go-next-symbolic.svg"),
+    ),
+    (
+        "go-previous-symbolic.svg",
+        include_str!("assets/symbolic/go-previous-symbolic.svg"),
+    ),
+    (
+        "list-add-symbolic.svg",
+        include_str!("assets/symbolic/list-add-symbolic.svg"),
+    ),
+    (
+        "list-remove-symbolic.svg",
+        include_str!("assets/symbolic/list-remove-symbolic.svg"),
+    ),
+    (
+        "media-playback-pause-symbolic.svg",
+        include_str!("assets/symbolic/media-playback-pause-symbolic.svg"),
+    ),
+    (
+        "media-playback-start-symbolic.svg",
+        include_str!("assets/symbolic/media-playback-start-symbolic.svg"),
+    ),
+    (
+        "media-playback-stop-symbolic.svg",
+        include_str!("assets/symbolic/media-playback-stop-symbolic.svg"),
+    ),
+    (
+        "media-record-symbolic.svg",
+        include_str!("assets/symbolic/media-record-symbolic.svg"),
+    ),
+    (
+        "object-select-symbolic.svg",
+        include_str!("assets/symbolic/object-select-symbolic.svg"),
+    ),
+    (
+        "open-menu-symbolic.svg",
+        include_str!("assets/symbolic/open-menu-symbolic.svg"),
+    ),
+    (
+        "org.gnome.Settings-symbolic.svg",
+        include_str!("assets/symbolic/org.gnome.Settings-symbolic.svg"),
+    ),
+    (
+        "pan-down-symbolic.svg",
+        include_str!("assets/symbolic/pan-down-symbolic.svg"),
+    ),
+    (
+        "pan-end-symbolic.svg",
+        include_str!("assets/symbolic/pan-end-symbolic.svg"),
+    ),
+    (
+        "pan-start-symbolic.svg",
+        include_str!("assets/symbolic/pan-start-symbolic.svg"),
+    ),
+    (
+        "pan-up-symbolic.svg",
+        include_str!("assets/symbolic/pan-up-symbolic.svg"),
+    ),
+    (
+        "system-help-symbolic.svg",
+        include_str!("assets/symbolic/system-help-symbolic.svg"),
+    ),
+    (
+        "user-trash-symbolic.svg",
+        include_str!("assets/symbolic/user-trash-symbolic.svg"),
+    ),
+    (
+        "view-conceal-symbolic.svg",
+        include_str!("assets/symbolic/view-conceal-symbolic.svg"),
+    ),
+    (
+        "view-more-horizontal-symbolic.svg",
+        include_str!("assets/symbolic/view-more-horizontal-symbolic.svg"),
+    ),
+    (
+        "view-refresh-symbolic.svg",
+        include_str!("assets/symbolic/view-refresh-symbolic.svg"),
+    ),
+    (
+        "view-reveal-symbolic.svg",
+        include_str!("assets/symbolic/view-reveal-symbolic.svg"),
+    ),
+    (
+        "weather-clear-night-symbolic.svg",
+        include_str!("assets/symbolic/weather-clear-night-symbolic.svg"),
+    ),
+    (
+        "weather-clear-symbolic.svg",
+        include_str!("assets/symbolic/weather-clear-symbolic.svg"),
+    ),
+    (
+        "window-close-symbolic.svg",
+        include_str!("assets/symbolic/window-close-symbolic.svg"),
+    ),
+    (
+        "zoom-in-symbolic.svg",
+        include_str!("assets/symbolic/zoom-in-symbolic.svg"),
+    ),
+    (
+        "zoom-out-symbolic.svg",
+        include_str!("assets/symbolic/zoom-out-symbolic.svg"),
+    ),
+];
+
+/// Ensures the OpenDictate dark, light, standard, and symbolic SVG icons are installed in the user's
 /// XDG icon directory and registered with the active `gtk4::IconTheme`.
 pub fn ensure_app_icons_registered() {
     use std::path::PathBuf;
@@ -82,6 +233,17 @@ pub fn ensure_app_icons_registered() {
                 apps_dir.join("io.github.opendictate.OpenDictate.svg"),
                 SVG_ICON_DARK,
             );
+            for &(filename, content) in SYMBOLIC_ICONS {
+                let _ = std::fs::write(apps_dir.join(filename), content);
+            }
+        }
+        let sym_dir = base_dirs
+            .data_local_dir()
+            .join("icons/hicolor/symbolic/apps");
+        if std::fs::create_dir_all(&sym_dir).is_ok() {
+            for &(filename, content) in SYMBOLIC_ICONS {
+                let _ = std::fs::write(sym_dir.join(filename), content);
+            }
         }
     }
 
@@ -100,6 +262,11 @@ pub fn ensure_app_icons_registered() {
                     icon_theme.add_search_path(&icons_sub);
                 }
             }
+            let manifest_symbolic =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ui/assets/symbolic");
+            if manifest_symbolic.exists() {
+                icon_theme.add_search_path(&manifest_symbolic);
+            }
             if let Some(base_dirs) = directories::BaseDirs::new() {
                 let data_dir = base_dirs.data_local_dir();
                 let user_icons = data_dir.join("icons");
@@ -109,6 +276,35 @@ pub fn ensure_app_icons_registered() {
                 let user_apps = data_dir.join("icons/hicolor/scalable/apps");
                 if user_apps.exists() {
                     icon_theme.add_search_path(&user_apps);
+                }
+                let user_sym = data_dir.join("icons/hicolor/symbolic/apps");
+                if user_sym.exists() {
+                    icon_theme.add_search_path(&user_sym);
+                }
+            }
+            for sys_path in [
+                "/usr/share/icons/Adwaita",
+                "/usr/share/icons/hicolor",
+                "/usr/share/icons",
+            ] {
+                let p = PathBuf::from(sys_path);
+                if p.exists() {
+                    icon_theme.add_search_path(&p);
+                }
+            }
+            if let Ok(snap) = std::env::var("SNAP") {
+                for sub in [
+                    "data-dir/icons/Adwaita",
+                    "data-dir/icons/hicolor",
+                    "data-dir/icons",
+                    "gnome-platform/usr/share/icons/Adwaita",
+                    "gnome-platform/usr/share/icons/hicolor",
+                    "gnome-platform/usr/share/icons",
+                ] {
+                    let p = PathBuf::from(&snap).join(sub);
+                    if p.exists() {
+                        icon_theme.add_search_path(&p);
+                    }
                 }
             }
         }

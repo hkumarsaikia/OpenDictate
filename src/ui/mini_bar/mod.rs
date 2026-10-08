@@ -395,8 +395,7 @@ pub fn apply_minibar_scale_css(scale_percent: u32) {
     );
 
     SCALE_PROVIDER.with(|provider| {
-        #[allow(deprecated)]
-        provider.load_from_data(&css);
+        provider.load_from_string(&css);
     });
 }
 
@@ -825,8 +824,7 @@ pub fn ensure_minibar_css() {
         padding: 8px 12px;
     }
     "#;
-    #[allow(deprecated)]
-    provider.load_from_data(css);
+    provider.load_from_string(css);
     if let Some(display) = gtk4::gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
             &display,

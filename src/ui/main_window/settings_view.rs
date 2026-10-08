@@ -68,122 +68,11 @@ pub type ConfigSyncFn = Rc<dyn Fn()>;
 #[derive(Clone, Default)]
 pub struct ConfigSyncCallback(pub Rc<RefCell<Option<ConfigSyncFn>>>);
 
-impl ConfigSyncCallback {
-    pub fn notify(&self) {
-        if let Some(cb) = self.0.borrow().as_ref() {
-            cb();
-        }
-    }
-}
-
 impl std::fmt::Debug for ConfigSyncCallback {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfigSyncCallback")
             .field("has_callback", &self.0.borrow().is_some())
             .finish()
-    }
-}
-
-/// Libadwaita 1.0+ compatible EntryRow built on `libadwaita::ActionRow` + `gtk4::Entry`.
-#[derive(Clone, Debug)]
-pub struct EntryRowCompat {
-    pub row: libadwaita::ActionRow,
-    pub entry: gtk4::Entry,
-}
-
-impl Default for EntryRowCompat {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl EntryRowCompat {
-    pub fn new() -> Self {
-        let row = libadwaita::ActionRow::new();
-        let entry = gtk4::Entry::new();
-        entry.set_valign(gtk4::Align::Center);
-        entry.set_hexpand(true);
-        entry.set_width_chars(24);
-        row.add_suffix(&entry);
-        row.set_activatable_widget(Some(&entry));
-        Self { row, entry }
-    }
-
-    pub fn with_title(title: &str) -> Self {
-        let s = Self::new();
-        s.row.set_title(title);
-        s
-    }
-
-    pub fn text(&self) -> gtk4::glib::GString {
-        self.entry.text()
-    }
-
-    pub fn set_text(&self, text: &str) {
-        self.entry.set_text(text);
-    }
-
-    pub fn connect_changed<F: Fn(&Self) + 'static>(&self, f: F) {
-        let this = self.clone();
-        self.entry.connect_changed(move |_| {
-            f(&this);
-        });
-    }
-}
-
-impl std::ops::Deref for EntryRowCompat {
-    type Target = libadwaita::ActionRow;
-    fn deref(&self) -> &Self::Target {
-        &self.row
-    }
-}
-
-/// Libadwaita 1.0+ compatible PasswordEntryRow built on `libadwaita::ActionRow` + `gtk4::PasswordEntry`.
-#[derive(Clone, Debug)]
-pub struct PasswordEntryRowCompat {
-    pub row: libadwaita::ActionRow,
-    pub entry: gtk4::PasswordEntry,
-}
-
-impl Default for PasswordEntryRowCompat {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl PasswordEntryRowCompat {
-    pub fn new() -> Self {
-        let row = libadwaita::ActionRow::new();
-        let entry = gtk4::PasswordEntry::new();
-        entry.set_show_peek_icon(true);
-        entry.set_valign(gtk4::Align::Center);
-        entry.set_hexpand(true);
-        entry.set_width_chars(24);
-        row.add_suffix(&entry);
-        row.set_activatable_widget(Some(&entry));
-        Self { row, entry }
-    }
-
-    pub fn text(&self) -> gtk4::glib::GString {
-        self.entry.text()
-    }
-
-    pub fn set_text(&self, text: &str) {
-        self.entry.set_text(text);
-    }
-
-    pub fn connect_changed<F: Fn(&Self) + 'static>(&self, f: F) {
-        let this = self.clone();
-        self.entry.connect_changed(move |_| {
-            f(&this);
-        });
-    }
-}
-
-impl std::ops::Deref for PasswordEntryRowCompat {
-    type Target = libadwaita::ActionRow;
-    fn deref(&self) -> &Self::Target {
-        &self.row
     }
 }
 
@@ -197,14 +86,14 @@ pub struct SettingsViewWidgets {
     pub general_group: libadwaita::PreferencesGroup,
     pub theme_dropdown: libadwaita::ComboRow,
     pub provider_row: libadwaita::ComboRow,
-    pub api_key_row: PasswordEntryRowCompat,
+    pub api_key_row: libadwaita::PasswordEntryRow,
     pub model_row: libadwaita::ActionRow,
     pub usage_limit_row: libadwaita::ActionRow,
     pub usage_limit_button: gtk4::Button,
     pub usage_limit_popover: gtk4::Popover,
     pub usage_limit_components: UsageLimitComponents,
     pub audio_device_row: libadwaita::ComboRow,
-    pub hotkey_row: EntryRowCompat,
+    pub hotkey_row: libadwaita::EntryRow,
     pub save_button: gtk4::Button,
     pub audio_devices: Vec<String>,
     pub current_models: Rc<RefCell<Vec<ModelInfo>>>,
@@ -319,7 +208,8 @@ impl SettingsViewWidgets {
         *self.on_model_warning_change.0.borrow_mut() = Some(Rc::new(callback));
     }
 
-    /// Registers a callback invoked whenever any setting changes so active config auto-syncs immediately.
+    /// Registers a callback invoked whenever any setting control changes in-place so the live worker
+    /// and persisted config stay synchronized even if the user does not click Save.
     pub fn set_on_config_auto_sync<F: Fn() + 'static>(&self, callback: F) {
         *self.on_config_auto_sync.0.borrow_mut() = Some(Rc::new(callback));
     }
@@ -820,6 +710,7 @@ pub fn populate_local_model_picker(
     local_status_label: &gtk4::Label,
     download_button: &gtk4::Button,
     delete_button: &gtk4::Button,
+    on_config_auto_sync: &ConfigSyncCallback,
 ) {
     while let Some(child) = components.list_box.first_child() {
         components.list_box.remove(&child);
@@ -919,6 +810,7 @@ pub fn populate_local_model_picker(
     let dl_btn_sel = download_button.clone();
     let del_btn_sel = delete_button.clone();
     let cp_sel = custom_path.clone();
+    let auto_sync_local_row = on_config_auto_sync.clone();
 
     components.list_box.connect_row_activated(move |_lb, row| {
         let idx = row.index() as usize;
@@ -946,6 +838,9 @@ pub fn populate_local_model_picker(
                 &dl_btn_sel,
                 &del_btn_sel,
             );
+        }
+        if let Some(cb) = auto_sync_local_row.0.borrow().as_ref() {
+            cb();
         }
         comp_clone.popover.popdown();
         comp_clone.detail_popover.popdown();
@@ -1341,10 +1236,10 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
         };
     cloud_group.add(&provider_row);
 
-    let api_key_row = PasswordEntryRowCompat::new();
+    let api_key_row = libadwaita::PasswordEntryRow::new();
     api_key_row.set_title(crate::services::i18n::tr("api_key", lang));
     api_key_row.set_text(&config.ai_api_key);
-    cloud_group.add(&*api_key_row);
+    cloud_group.add(&api_key_row);
 
     let current_models = Rc::new(RefCell::new(Vec::<ModelInfo>::new()));
     let selected_model_id = Rc::new(RefCell::new(config.ai_model.clone()));
@@ -1583,7 +1478,7 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
         let active_warn_sel = active_model_warning.clone();
         let warn_cb_sel = on_model_warning_change.clone();
         let cloud_sw_sel = cloud_switch.clone();
-        let sync_cb_model = on_config_auto_sync.clone();
+        let auto_sync_model = on_config_auto_sync.clone();
 
         picker_components
             .list_box
@@ -1597,7 +1492,9 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
 
                     update_usage_limit_state(&ul_row_sel, &ul_btn_sel, &ul_pop_sel, &key, &m.id);
                     trigger_usage_limit_refresh(&ul_comp, prov, &key, &m.id);
-                    sync_cb_model.notify();
+                    if let Some(cb) = auto_sync_model.0.borrow().as_ref() {
+                        cb();
+                    }
 
                     // Immediate model capability & paid-plan check
                     let immediate_warn =
@@ -1695,7 +1592,7 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
     let ul_row_prov = usage_limit_row.clone();
     let ul_btn_prov = usage_limit_button.clone();
     let ul_pop_prov = usage_limit_popover.clone();
-    let sync_cb_prov = on_config_auto_sync.clone();
+    let auto_sync_prov = on_config_auto_sync.clone();
     provider_row.connect_selected_notify(move |row| {
         let idx = row.selected() as usize;
         if let Some(&prov) = AI_PROVIDERS.get(idx) {
@@ -1713,7 +1610,9 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
             );
             let mid = selected_model_id_clone_prov.borrow().clone();
             trigger_usage_limit_refresh(&ul_comp_prov, prov, &key, &mid);
-            sync_cb_prov.notify();
+            if let Some(cb) = auto_sync_prov.0.borrow().as_ref() {
+                cb();
+            }
         }
     });
 
@@ -1727,7 +1626,7 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
     let ul_row_key = usage_limit_row.clone();
     let ul_btn_key = usage_limit_button.clone();
     let ul_pop_key = usage_limit_popover.clone();
-    let sync_cb_key = on_config_auto_sync.clone();
+    let auto_sync_key = on_config_auto_sync.clone();
     api_key_row.connect_changed(move |entry| {
         let idx = prov_row_clone_key.selected() as usize;
         if let Some(&prov) = AI_PROVIDERS.get(idx) {
@@ -1745,7 +1644,9 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
             );
             let mid = selected_model_id_clone_key.borrow().clone();
             trigger_usage_limit_refresh(&ul_comp_key, prov, &key, &mid);
-            sync_cb_key.notify();
+            if let Some(cb) = auto_sync_key.0.borrow().as_ref() {
+                cb();
+            }
         }
     });
 
@@ -1868,15 +1769,8 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
         &local_status_label,
         &download_button,
         &delete_button,
+        &on_config_auto_sync,
     );
-    {
-        let sync_cb_local_model = on_config_auto_sync.clone();
-        local_picker_components
-            .list_box
-            .connect_row_activated(move |_lb, _row| {
-                sync_cb_local_model.notify();
-            });
-    }
 
     // Threads Row
     let threads_row = libadwaita::ComboRow::new();
@@ -1928,15 +1822,19 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
     local_group.add(&custom_threads_row);
 
     let ctr_clone = custom_threads_row.clone();
-    let sync_cb_threads = on_config_auto_sync.clone();
+    let auto_sync_threads = on_config_auto_sync.clone();
     threads_row.connect_selected_notify(move |row| {
         let is_custom = row.selected() == 6;
         ctr_clone.set_visible(is_custom);
-        sync_cb_threads.notify();
+        if let Some(cb) = auto_sync_threads.0.borrow().as_ref() {
+            cb();
+        }
     });
-    let sync_cb_spin = on_config_auto_sync.clone();
+    let auto_sync_spin = on_config_auto_sync.clone();
     custom_threads_spin.connect_value_changed(move |_| {
-        sync_cb_spin.notify();
+        if let Some(cb) = auto_sync_spin.0.borrow().as_ref() {
+            cb();
+        }
     });
 
     page.add(&local_group);
@@ -1950,50 +1848,50 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
         &delete_button,
     );
 
-    // Wire browse button with FileChooserNative (compatible with GTK 4.0+ and XDG Desktop Portal)
+    // Wire browse button with FileDialog
     let cp_browse = custom_path.clone();
     let custom_row_browse = custom_file_row.clone();
     let status_lbl_browse = local_status_label.clone();
     let dl_btn_browse = download_button.clone();
     let del_btn_browse = delete_button.clone();
-    let sync_cb_browse = on_config_auto_sync.clone();
+    let auto_sync_browse = on_config_auto_sync.clone();
 
-    browse_button.connect_clicked(move |btn| {
-        let parent_win = btn.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
-        let dialog = gtk4::FileChooserNative::new(
-            Some("Select Speech Model (.bin)"),
-            parent_win.as_ref(),
-            gtk4::FileChooserAction::Open,
-            Some("Select"),
-            Some("Cancel"),
-        );
+    browse_button.connect_clicked(move |_| {
+        let dialog = gtk4::FileDialog::new();
+        dialog.set_title("Select Speech Model (.bin)");
 
         let filter = gtk4::FileFilter::new();
         filter.set_name(Some("Speech Model File (*.bin)"));
         filter.add_pattern("*.bin");
-        dialog.add_filter(&filter);
+        let filters = gtk4::gio::ListStore::new::<gtk4::FileFilter>();
+        filters.append(&filter);
+        dialog.set_filters(Some(&filters));
+        dialog.set_default_filter(Some(&filter));
 
         let cp = cp_browse.clone();
         let row = custom_row_browse.clone();
         let st = status_lbl_browse.clone();
-        let btn_dl = dl_btn_browse.clone();
+        let btn = dl_btn_browse.clone();
         let del_btn = del_btn_browse.clone();
-        let sync_cb = sync_cb_browse.clone();
+        let sync_cb = auto_sync_browse.clone();
 
-        dialog.connect_response(move |dlg, response| {
-            if response == gtk4::ResponseType::Accept
-                && let Some(file) = dlg.file()
-                && let Some(path) = file.path()
-            {
-                let path_str = path.to_string_lossy().to_string();
-                *cp.borrow_mut() = Some(path_str.clone());
-                row.set_subtitle(&path_str);
-                update_local_model_status_ui("custom", Some(&path_str), &st, &btn_dl, &del_btn);
-                sync_cb.notify();
-            }
-            dlg.destroy();
-        });
-        dialog.show();
+        dialog.open(
+            None::<&gtk4::Window>,
+            None::<&gtk4::gio::Cancellable>,
+            move |res| {
+                if let Ok(file) = res
+                    && let Some(path) = file.path()
+                {
+                    let path_str = path.to_string_lossy().to_string();
+                    *cp.borrow_mut() = Some(path_str.clone());
+                    row.set_subtitle(&path_str);
+                    update_local_model_status_ui("custom", Some(&path_str), &st, &btn, &del_btn);
+                    if let Some(cb) = sync_cb.0.borrow().as_ref() {
+                        cb();
+                    }
+                }
+            },
+        );
     });
 
     // Wire download button
@@ -2006,7 +1904,7 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
     let custom_path_click = custom_path.clone();
     let del_btn_dl = delete_button.clone();
     let sel_id_dl = selected_local_model_id.clone();
-    let sync_cb_dl = on_config_auto_sync.clone();
+    let auto_sync_dl = on_config_auto_sync.clone();
 
     download_button.connect_clicked(move |_| {
         let catalog = get_local_model_catalog();
@@ -2053,7 +1951,7 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
         let cp_ref = custom_path_click.clone();
         let lm_row = lm_row_click.clone();
         let lm_drop = lm_drop_click.clone();
-        let sync_cb = sync_cb_dl.clone();
+        let sync_dl_done = auto_sync_dl.clone();
 
         gtk4::glib::spawn_future_local(async move {
             while let Some(msg) = rx.recv().await {
@@ -2082,7 +1980,9 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
                             &del_btn,
                         );
                         pr_row.set_visible(false);
-                        sync_cb.notify();
+                        if let Some(cb) = sync_dl_done.0.borrow().as_ref() {
+                            cb();
+                        }
                     }
                     DownloadMsg::Finished(Err(err)) => {
                         pr_row.set_subtitle(&format!("Download failed: {}", err));
@@ -2107,7 +2007,7 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
     let sel_id_del = selected_local_model_id.clone();
     let custom_path_del = custom_path.clone();
     let custom_row_del = custom_file_row.clone();
-    let sync_cb_del = on_config_auto_sync.clone();
+    let auto_sync_del = on_config_auto_sync.clone();
 
     delete_button.connect_clicked(move |_| {
         let mid = sel_id_del.borrow().clone();
@@ -2128,7 +2028,9 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
             &dl_btn_del,
             &del_btn_click,
         );
-        sync_cb_del.notify();
+        if let Some(cb) = auto_sync_del.0.borrow().as_ref() {
+            cb();
+        }
     });
 
     // Synchronize switches with mutual exclusivity
@@ -2186,7 +2088,7 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
     let set_local_sens_c = set_local_sensitive.clone();
     let active_warn_cloud = active_model_warning.clone();
     let warn_cb_cloud = on_model_warning_change.clone();
-    let sync_cb_cloud = on_config_auto_sync.clone();
+    let auto_sync_cloud = on_config_auto_sync.clone();
 
     cloud_switch.connect_active_notify(move |switch| {
         if *is_syncing_cloud.borrow() {
@@ -2209,7 +2111,9 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
             }
         }
         *is_syncing_cloud.borrow_mut() = false;
-        sync_cb_cloud.notify();
+        if let Some(cb) = auto_sync_cloud.0.borrow().as_ref() {
+            cb();
+        }
     });
 
     let is_syncing_local = is_syncing.clone();
@@ -2218,7 +2122,7 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
     let set_local_sens_l = set_local_sensitive.clone();
     let active_warn_local = active_model_warning.clone();
     let warn_cb_local = on_model_warning_change.clone();
-    let sync_cb_local = on_config_auto_sync.clone();
+    let auto_sync_local = on_config_auto_sync.clone();
 
     local_switch.connect_active_notify(move |switch| {
         if *is_syncing_local.borrow() {
@@ -2241,7 +2145,9 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
             }
         }
         *is_syncing_local.borrow_mut() = false;
-        sync_cb_local.notify();
+        if let Some(cb) = auto_sync_local.0.borrow().as_ref() {
+            cb();
+        }
     });
 
     // 4. Audio & System Card
@@ -2271,10 +2177,6 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
     } else {
         audio_device_row.set_selected(0);
     }
-    let sync_cb_audio = on_config_auto_sync.clone();
-    audio_device_row.connect_selected_notify(move |_| {
-        sync_cb_audio.notify();
-    });
     general_group.add(&audio_device_row);
 
     // Live hardware hotplug monitor: polls connected audio hardware every 2 seconds
@@ -2318,14 +2220,16 @@ pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, Set
         });
     }
 
-    let hotkey_row = EntryRowCompat::new();
+    let hotkey_row = libadwaita::EntryRow::new();
     hotkey_row.set_title(crate::services::i18n::tr("global_shortcut", lang));
     hotkey_row.set_text(&config.hotkey);
-    let sync_cb_hotkey = on_config_auto_sync.clone();
+    let auto_sync_hotkey = on_config_auto_sync.clone();
     hotkey_row.connect_changed(move |_| {
-        sync_cb_hotkey.notify();
+        if let Some(cb) = auto_sync_hotkey.0.borrow().as_ref() {
+            cb();
+        }
     });
-    general_group.add(&*hotkey_row);
+    general_group.add(&hotkey_row);
 
     page.add(&general_group);
 
