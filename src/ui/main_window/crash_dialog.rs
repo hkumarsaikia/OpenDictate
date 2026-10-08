@@ -98,7 +98,8 @@ impl CrashDialogWidgets {
 fn ensure_crash_dialog_css() {
     if let Some(display) = gtk4::gdk::Display::default() {
         let provider = gtk4::CssProvider::new();
-        provider.load_from_string(
+        #[allow(deprecated)]
+        provider.load_from_data(
             "
             .crash-warning-banner {
                 background-color: alpha(@warning_bg_color, 0.16);
@@ -162,14 +163,14 @@ pub fn build_crash_report_window(
         window.set_transient_for(Some(p));
     }
 
-    let toolbar_view = libadwaita::ToolbarView::new();
+    let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     let header_bar = libadwaita::HeaderBar::builder()
         .title_widget(&libadwaita::WindowTitle::new(
             "Unexpected Crash Detected",
             "",
         ))
         .build();
-    toolbar_view.add_top_bar(&header_bar);
+    content_box.append(&header_bar);
 
     let root_box = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
     root_box.set_margin_top(10);
@@ -301,8 +302,9 @@ pub fn build_crash_report_window(
     action_bar.append(&send_button);
     root_box.append(&action_bar);
 
-    toolbar_view.set_content(Some(&root_box));
-    window.set_content(Some(&toolbar_view));
+    root_box.set_vexpand(true);
+    content_box.append(&root_box);
+    window.set_content(Some(&content_box));
     gtk4::prelude::GtkWindowExt::set_focus(&window, Some(&send_button));
 
     let widgets = CrashDialogWidgets {

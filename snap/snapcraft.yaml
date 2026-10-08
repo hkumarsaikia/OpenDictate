@@ -34,6 +34,14 @@ apps:
       - desktop-legacy
       - wayland
       - x11
+    environment:
+      ALSA_CONFIG_PATH: $SNAP/etc/asound.conf
+
+layout:
+  /usr/share/alsa:
+    bind: $SNAP/gnome-platform/usr/share/alsa
+  /usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/alsa-lib:
+    bind: $SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/alsa-lib
 
 parts:
   opendictate:
@@ -55,12 +63,29 @@ parts:
       - libssl-dev
     stage-packages:
       - libasound2t64
+      - libasound2-data
+      - libasound2-plugins
+      - pulseaudio-utils
     override-build: |
       craftctl default
-      mkdir -p $CRAFT_PART_INSTALL/usr/bin
+      mkdir -p $CRAFT_PART_INSTALL/usr/bin $CRAFT_PART_INSTALL/etc
       if [ -f $CRAFT_PART_INSTALL/bin/opendictate ]; then
         cp $CRAFT_PART_INSTALL/bin/opendictate $CRAFT_PART_INSTALL/usr/bin/opendictate
       fi
+      cat << 'EOF' > $CRAFT_PART_INSTALL/etc/asound.conf
+      pcm.!default {
+          type pulse
+          fallback "sysdefault"
+          hint {
+              show on
+              description "Default ALSA Output (currently PulseAudio/PipeWire Sound Server)"
+          }
+      }
+      ctl.!default {
+          type pulse
+          fallback "sysdefault"
+      }
+      EOF
       install -Dm644 LICENSE $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE
       install -Dm644 data/io.github.opendictate.OpenDictate.desktop $CRAFT_PART_INSTALL/usr/share/applications/io.github.opendictate.OpenDictate.desktop
       install -Dm644 data/io.github.opendictate.OpenDictate.metainfo.xml $CRAFT_PART_INSTALL/usr/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml
@@ -73,4 +98,3 @@ parts:
         install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-dark.png
         install -Dm644 src/ui/assets/brand/png-light/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-light.png
       done
-

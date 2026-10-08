@@ -477,7 +477,7 @@ fn test_about_dialog_details_credits_and_buy_me_a_coffee() {
             .child()
             .unwrap_or_else(|| coffee_dlg.clone().upcast::<gtk4::Widget>());
         fn has_entry_row(w: &gtk4::Widget, title: &str) -> bool {
-            if let Some(row) = w.downcast_ref::<libadwaita::EntryRow>()
+            if let Some(row) = w.downcast_ref::<libadwaita::ActionRow>()
                 && row.title().as_str() == title
             {
                 return true;

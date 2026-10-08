@@ -312,3 +312,27 @@ fn test_legacy_tier_sandbox_rules() {
         flatpak_finish_args.contains(&"--filesystem=xdg-config/opendictate:create".to_string())
     );
 }
+
+#[test]
+fn test_snapcraft_alsa_pulseaudio_routing() {
+    let snap_path = project_root().join("snap/snapcraft.yaml");
+    let content = fs::read_to_string(&snap_path).expect("Failed to read snap/snapcraft.yaml");
+
+    assert!(
+        content.contains("libasound2-plugins"),
+        "Snapcraft manifest must stage libasound2-plugins so cpal/ALSA can route audio through PulseAudio/PipeWire"
+    );
+    assert!(
+        content.contains("pulseaudio-utils"),
+        "Snapcraft manifest must stage pulseaudio-utils (pactl) for audio profile detection inside the Snap"
+    );
+    assert!(
+        content.contains("ALSA_CONFIG_PATH"),
+        "Snapcraft manifest must set ALSA_CONFIG_PATH so libasound.so.2 routes default PCM to pulse"
+    );
+    assert!(
+        content.contains("/usr/share/alsa:") && content.contains("alsa-lib:"),
+        "Snapcraft manifest must bind /usr/share/alsa and alsa-lib via layout:"
+    );
+}
+

@@ -168,7 +168,8 @@ pub struct AudioRecorder {
     sample_rate: Arc<AtomicU32>,
 }
 
-/// Suppresses ALSA's default stderr error logging during device probing on Linux.
+/// Suppresses ALSA's default stderr error logging during device probing on Linux
+/// and ensures ALSA configuration paths are valid inside Snap sandboxes.
 #[cfg(target_os = "linux")]
 pub fn silence_alsa_logging() {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -176,6 +177,33 @@ pub fn silence_alsa_logging() {
     if SILENCED.swap(true, Ordering::SeqCst) {
         return;
     }
+
+    if let Ok(snap_root) = std::env::var("SNAP") {
+        if std::env::var_os("ALSA_CONFIG_DIR").is_none()
+            && !std::path::Path::new("/usr/share/alsa/alsa.conf").exists()
+        {
+            let gnome_alsa = format!("{}/gnome-platform/usr/share/alsa", snap_root);
+            let snap_alsa = format!("{}/usr/share/alsa", snap_root);
+            if std::path::Path::new(&format!("{}/alsa.conf", gnome_alsa)).exists() {
+                unsafe {
+                    std::env::set_var("ALSA_CONFIG_DIR", &gnome_alsa);
+                }
+            } else if std::path::Path::new(&format!("{}/alsa.conf", snap_alsa)).exists() {
+                unsafe {
+                    std::env::set_var("ALSA_CONFIG_DIR", &snap_alsa);
+                }
+            }
+        }
+        if std::env::var_os("ALSA_CONFIG_PATH").is_none() {
+            let asound_conf = format!("{}/etc/asound.conf", snap_root);
+            if std::path::Path::new(&asound_conf).exists() {
+                unsafe {
+                    std::env::set_var("ALSA_CONFIG_PATH", &asound_conf);
+                }
+            }
+        }
+    }
+
     type AlsaErrorHandler = unsafe extern "C" fn(
         *const std::os::raw::c_char,
         std::os::raw::c_int,
@@ -203,15 +231,26 @@ pub fn silence_alsa_logging() {
 pub fn silence_alsa_logging() {}
 
 impl AudioRecorder {
+    /// Returns true if the requested profile name (`None`, `"System Default"`, `"default"`,
+    /// `"Headphones"`, or `"Handsfree"`) should open the default PulseAudio/PipeWire-backed
+    /// ALSA device (`PULSE_SOURCE`) rather than scanning raw hardware `hw:` / `iec958:` ALSA subdevices.
+    pub fn should_use_default_pulse_device(device_name: Option<&str>) -> bool {
+        matches!(
+            device_name.map(|s| s.trim()),
+            None | Some("")
+                | Some("System Default")
+                | Some("default")
+                | Some("Headphones")
+                | Some("Handsfree")
+        )
+    }
+
     /// Initialize audio recorder for optional named device, or system default device if `None`.
     pub fn new(device_name: Option<String>) -> Result<Self, AudioError> {
         silence_alsa_logging();
         let host = cpal::default_host();
         if let Some(ref name) = device_name
-            && name != "System Default"
-            && name != "default"
-            && name != "Headphones"
-            && name != "Handsfree"
+            && !Self::should_use_default_pulse_device(Some(name))
             && let Ok(devices) = host.input_devices()
         {
             let mut found = false;
@@ -249,6 +288,7 @@ impl AudioRecorder {
             "Handsfree".to_string(),
         ]
     }
+
 
     /// Classify the active hardware microphone profile (`"Handsfree"`, `"Headphones"`, or `"System Default"`)
     /// from `pactl list sources` output, `pactl list cards` output, and fallback raw device names.
@@ -618,44 +658,48 @@ impl AudioRecorder {
         }
 
         let host = cpal::default_host();
-        let device = match &self.device_name {
-            Some(name) if name != "System Default" && name != "default" => {
-                let mut found = None;
-                let target_lower = name.to_lowercase();
-                if let Ok(devices) = host.input_devices() {
-                    for dev in devices {
-                        if let Ok(dev_name) = dev.name() {
-                            let d_lower = dev_name.to_lowercase();
-                            if d_lower.ends_with(".monitor") {
-                                continue;
-                            }
-                            let matches_headphones = name == "Headphones"
-                                && (d_lower.contains("headphone") || d_lower.contains("headset"));
-                            let matches_handsfree = name == "Handsfree"
-                                && (d_lower.contains("handsfree")
-                                    || d_lower.contains("handset")
-                                    || d_lower.contains("bluetooth")
-                                    || d_lower.contains("bluez"));
-                            if matches_headphones
-                                || matches_handsfree
-                                || d_lower.contains(&target_lower)
-                            {
-                                found = Some(dev);
-                                break;
-                            }
+        let default_or_first_device = || -> Result<cpal::Device, AudioError> {
+            if let Some(dev) = host.default_input_device() {
+                return Ok(dev);
+            }
+            if let Ok(devices) = host.input_devices() {
+                for dev in devices {
+                    if let Ok(dev_name) = dev.name() {
+                        let d_lower = dev_name.to_lowercase();
+                        if !d_lower.ends_with(".monitor") && !d_lower.starts_with("iec958:") {
+                            return Ok(dev);
                         }
                     }
                 }
-                match found {
-                    Some(dev) => dev,
-                    None => host
-                        .default_input_device()
-                        .ok_or(AudioError::DefaultDeviceNotFound)?,
+            }
+            Err(AudioError::DefaultDeviceNotFound)
+        };
+
+        let device = if Self::should_use_default_pulse_device(self.device_name.as_deref()) {
+            default_or_first_device()?
+        } else if let Some(ref name) = self.device_name {
+            let mut found = None;
+            let target_lower = name.to_lowercase();
+            if let Ok(devices) = host.input_devices() {
+                for dev in devices {
+                    if let Ok(dev_name) = dev.name() {
+                        let d_lower = dev_name.to_lowercase();
+                        if d_lower.ends_with(".monitor") || d_lower.starts_with("iec958:") {
+                            continue;
+                        }
+                        if d_lower.contains(&target_lower) {
+                            found = Some(dev);
+                            break;
+                        }
+                    }
                 }
             }
-            _ => host
-                .default_input_device()
-                .ok_or(AudioError::DefaultDeviceNotFound)?,
+            match found {
+                Some(dev) => dev,
+                None => default_or_first_device()?,
+            }
+        } else {
+            default_or_first_device()?
         };
 
         let supported_config = device.default_input_config()?;

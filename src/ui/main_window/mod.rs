@@ -536,6 +536,8 @@ impl SimpleComponent for MainWindowModel {
                     };
                     mb_widgets_clone.drawer_widgets.set_text(display_text);
                     mb_widgets_clone.drawer_widgets.set_status("Ready");
+                    crate::ui::mini_bar::copy_text_to_clipboard(display_text);
+                    mb_widgets_clone.expand_drawer();
 
                     sender_for_worker.input(MainWindowMsg::DictationSuccess {
                         raw: raw_text,
@@ -574,6 +576,7 @@ impl SimpleComponent for MainWindowModel {
                     mb_widgets_clone.visualizer_area.queue_draw();
 
                     mb_widgets_clone.drawer_widgets.set_status("Error");
+                    mb_widgets_clone.show_warning_tooltip(&err);
                     sender_for_worker.input(MainWindowMsg::DictationError(err));
                 }
                 DictationWorkerOutput::StatusMessage(msg) => {
@@ -723,6 +726,7 @@ impl SimpleComponent for MainWindowModel {
                     mb_widgets_clone
                         .drawer_widgets
                         .set_status("No speech detected");
+                    mb_widgets_clone.show_warning_tooltip("No speech detected");
                     sender_for_worker.input(MainWindowMsg::DictationStatus(
                         "No speech detected".to_string(),
                     ));
@@ -733,11 +737,33 @@ impl SimpleComponent for MainWindowModel {
         // Store worker sender in model for triggering actions
         model.set_worker_sender(worker.sender().clone());
 
-        // Connect record button to worker: Toggle recording (guarded by active model warnings)
+        let active_cfg = std::rc::Rc::new(std::cell::RefCell::new(init.config.clone()));
+
+        // Connect record button to worker: Toggle recording (guarded by active model & readiness warnings)
         let worker_sender_rec = worker.sender().clone();
         let tone_ref = model.tone.clone();
         let mb_rec_guard = minibar_widgets.clone();
+        let active_cfg_rec = active_cfg.clone();
+        let sender_rec_dash = sender.clone();
+        let root_rec_dash = root.clone();
+        let mb_win_rec_dash = minibar_window.clone();
         minibar_widgets.record_button.connect_clicked(move |_| {
+            let is_currently_recording = mb_rec_guard
+                .record_button
+                .has_css_class("recording-active");
+            if !is_currently_recording
+                && let Some(readiness_warn) =
+                    crate::ui::mini_bar::evaluate_recording_readiness_warning(
+                        &active_cfg_rec.borrow(),
+                    )
+            {
+                mb_rec_guard.show_warning_tooltip(&readiness_warn);
+                sender_rec_dash.input(MainWindowMsg::ShowDashboard);
+                root_rec_dash.present();
+                mb_win_rec_dash.set_transient_for(Some(&root_rec_dash));
+                mb_win_rec_dash.present();
+                return;
+            }
             if mb_rec_guard.try_start_recording_or_warn() {
                 let _ = worker_sender_rec.send(DictationWorkerInput::ToggleRecording {
                     tone: tone_ref.clone(),
@@ -836,36 +862,48 @@ impl SimpleComponent for MainWindowModel {
             mb_win_dash.present();
         });
 
-        let toolbar_view = libadwaita::ToolbarView::new();
-        toolbar_view.add_top_bar(&header_bar);
-        toolbar_view.set_content(Some(&settings_view));
+        let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        content_box.append(&header_bar);
+        settings_view.set_vexpand(true);
+        content_box.append(&settings_view);
 
-        root.set_content(Some(&toolbar_view));
+        root.set_content(Some(&content_box));
 
         // Setup Main Menu actions
-        let active_cfg = std::rc::Rc::new(std::cell::RefCell::new(init.config.clone()));
         setup_main_menu_actions(&root, active_cfg.clone());
 
-        // Connect settings events to sender
-        let sender_clone = sender.clone();
-        let sw_clone = settings_widgets.clone();
-        let active_cfg_save = active_cfg.clone();
+        // Helper closure to extract settings widgets and synchronize with model + worker
+        let sync_settings_to_sender = {
+            let sender_sync = sender.clone();
+            let sw_sync = settings_widgets.clone();
+            let active_cfg_sync = active_cfg.clone();
+            move || {
+                let current_cfg = active_cfg_sync.borrow().clone();
+                let extracted = settings_view::extract_config_from_widgets(&sw_sync, &current_cfg);
+                *active_cfg_sync.borrow_mut() = extracted.clone();
+                sender_sync.input(MainWindowMsg::SetAiMode(extracted.ai_mode));
+                sender_sync.input(MainWindowMsg::SetLocalModelId(extracted.local_model_id));
+                sender_sync.input(MainWindowMsg::SetLocalCustomPath(
+                    extracted.local_custom_path,
+                ));
+                sender_sync.input(MainWindowMsg::SetLocalThreads(extracted.local_threads));
+                sender_sync.input(MainWindowMsg::SetAiProvider(extracted.ai_provider));
+                sender_sync.input(MainWindowMsg::SetAiApiKey(extracted.ai_api_key));
+                sender_sync.input(MainWindowMsg::SetAiModel(extracted.ai_model));
+                sender_sync.input(MainWindowMsg::SetAudioDevice(extracted.audio_device));
+                sender_sync.input(MainWindowMsg::SetHotkey(extracted.hotkey));
+                sender_sync.input(MainWindowMsg::SaveSettings);
+            }
+        };
+
+        let sync_for_save = sync_settings_to_sender.clone();
         settings_widgets.save_button.connect_clicked(move |_| {
-            let current_cfg = active_cfg_save.borrow().clone();
-            let extracted = settings_view::extract_config_from_widgets(&sw_clone, &current_cfg);
-            *active_cfg_save.borrow_mut() = extracted.clone();
-            sender_clone.input(MainWindowMsg::SetAiMode(extracted.ai_mode));
-            sender_clone.input(MainWindowMsg::SetLocalModelId(extracted.local_model_id));
-            sender_clone.input(MainWindowMsg::SetLocalCustomPath(
-                extracted.local_custom_path,
-            ));
-            sender_clone.input(MainWindowMsg::SetLocalThreads(extracted.local_threads));
-            sender_clone.input(MainWindowMsg::SetAiProvider(extracted.ai_provider));
-            sender_clone.input(MainWindowMsg::SetAiApiKey(extracted.ai_api_key));
-            sender_clone.input(MainWindowMsg::SetAiModel(extracted.ai_model));
-            sender_clone.input(MainWindowMsg::SetAudioDevice(extracted.audio_device));
-            sender_clone.input(MainWindowMsg::SetHotkey(extracted.hotkey));
-            sender_clone.input(MainWindowMsg::SaveSettings);
+            sync_for_save();
+        });
+
+        let sync_for_auto = sync_settings_to_sender;
+        settings_widgets.set_on_config_auto_sync(move || {
+            sync_for_auto();
         });
 
         let sender_clone = sender.clone();
@@ -906,6 +944,20 @@ impl SimpleComponent for MainWindowModel {
                     sender_audio.input(MainWindowMsg::SetAudioDevice(dev));
                 });
         }
+
+        // Attach GTK4 keyboard shortcut controllers to both MiniBar and Settings windows
+        attach_window_shortcuts(
+            &minibar_window,
+            &init.config.hotkey,
+            &minibar_widgets.record_button,
+            &minibar_widgets.cancel_button,
+        );
+        attach_window_shortcuts(
+            root.upcast_ref::<gtk4::Window>(),
+            &init.config.hotkey,
+            &minibar_widgets.record_button,
+            &minibar_widgets.cancel_button,
+        );
 
         // Apply initial theme CSS class and window icons
         crate::ui::theme::ensure_app_icons_registered();
@@ -1135,11 +1187,12 @@ pub fn build_main_window(
     let (header_bar, header_widgets) = header::build_header_bar(config, storage);
     let (settings_view, settings_widgets) = settings_view::build_settings_view(config);
 
-    let toolbar_view = libadwaita::ToolbarView::new();
-    toolbar_view.add_top_bar(&header_bar);
-    toolbar_view.set_content(Some(&settings_view));
+    let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    content_box.append(&header_bar);
+    settings_view.set_vexpand(true);
+    content_box.append(&settings_view);
 
-    window.set_content(Some(&toolbar_view));
+    window.set_content(Some(&content_box));
 
     let model = std::rc::Rc::new(std::cell::RefCell::new(MainWindowModel::new(
         config.clone(),
@@ -1203,21 +1256,71 @@ pub fn build_main_window(
         });
     }
 
-    // Save button in settings
+    // Save button & live auto-sync in settings
     {
-        let model = model.clone();
-        let sw = settings_widgets.clone();
-        let active_cfg_for_save = active_cfg.clone();
+        let sync_standalone = {
+            let model = model.clone();
+            let sw = settings_widgets.clone();
+            let active_cfg_for_save = active_cfg.clone();
+            move || {
+                let current_cfg = active_cfg_for_save.borrow().clone();
+                let extracted = settings_view::extract_config_from_widgets(&sw, &current_cfg);
+                *active_cfg_for_save.borrow_mut() = extracted.clone();
+                *model.borrow_mut().config_mut() = extracted;
+                model.borrow_mut().update(MainWindowMsg::SaveSettings);
+            }
+        };
+        let sync_btn = sync_standalone.clone();
         settings_widgets.save_button.connect_clicked(move |_| {
-            let current_cfg = active_cfg_for_save.borrow().clone();
-            let extracted = settings_view::extract_config_from_widgets(&sw, &current_cfg);
-            *active_cfg_for_save.borrow_mut() = extracted.clone();
-            *model.borrow_mut().config_mut() = extracted;
-            model.borrow_mut().update(MainWindowMsg::SaveSettings);
+            sync_btn();
+        });
+        settings_widgets.set_on_config_auto_sync(move || {
+            sync_standalone();
         });
     }
 
     window
+}
+
+/// Attaches a GTK4 `ShortcutController` (`ShortcutScope::Global`) to a window so the user can
+/// toggle recording with their configured shortcut (default `<Control><Alt>d`) or cancel an
+/// active recording with `Escape`.
+fn attach_window_shortcuts(
+    window: &gtk4::Window,
+    hotkey_raw: &str,
+    record_button: &gtk4::Button,
+    cancel_button: &gtk4::Button,
+) {
+    let controller = gtk4::ShortcutController::new();
+    controller.set_scope(gtk4::ShortcutScope::Global);
+
+    let accel = crate::services::hotkey::HotkeyService::to_gtk_accelerator(hotkey_raw)
+        .unwrap_or_else(|_| "<Control><Alt>d".to_string());
+    if let Some(trigger) = gtk4::ShortcutTrigger::parse_string(&accel) {
+        let rec_btn = record_button.clone();
+        let action = gtk4::CallbackAction::new(move |_, _| {
+            if rec_btn.is_sensitive() {
+                rec_btn.emit_clicked();
+            }
+            gtk4::glib::Propagation::Stop
+        });
+        controller.add_shortcut(gtk4::Shortcut::new(Some(trigger), Some(action)));
+    }
+
+    if let Some(esc_trigger) = gtk4::ShortcutTrigger::parse_string("Escape") {
+        let cancel_btn = cancel_button.clone();
+        let action = gtk4::CallbackAction::new(move |_, _| {
+            if cancel_btn.is_sensitive() {
+                cancel_btn.emit_clicked();
+                gtk4::glib::Propagation::Stop
+            } else {
+                gtk4::glib::Propagation::Proceed
+            }
+        });
+        controller.add_shortcut(gtk4::Shortcut::new(Some(esc_trigger), Some(action)));
+    }
+
+    window.add_controller(controller);
 }
 
 /// Helper function to configure Main Menu actions on an ApplicationWindow.

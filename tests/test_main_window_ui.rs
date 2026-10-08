@@ -1333,3 +1333,51 @@ fn test_dual_theme_svg_icons_and_window_icon_names() {
         assert_eq!(win_white.icon_name().as_deref(), Some("opendictate-light"));
     }
 }
+
+#[test]
+fn test_settings_live_auto_sync_callback() {
+    if gtk4::is_initialized_main_thread() || (!gtk4::is_initialized() && gtk4::init().is_ok()) {
+        let _ = libadwaita::init();
+        let config = Config::default();
+        let (_page, widgets) =
+            opendictate::ui::main_window::settings_view::build_settings_view(&config);
+
+        let synced_count = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let count_clone = synced_count.clone();
+        widgets.set_on_config_auto_sync(move || {
+            count_clone.set(count_clone.get() + 1);
+        });
+
+        // Toggling Local AI switch must immediately fire the auto-sync callback even without clicking Save
+        widgets.local_switch.set_active(true);
+        assert!(
+            synced_count.get() >= 1,
+            "Switching to Local AI must immediately trigger live config sync"
+        );
+
+        let before_key = synced_count.get();
+        widgets.api_key_row.set_text("gsk_live_test_key");
+        assert!(
+            synced_count.get() > before_key,
+            "Updating API key must immediately trigger live config sync"
+        );
+    }
+}
+
+#[test]
+fn test_hotkey_gtk_accelerator_conversion() {
+    use opendictate::services::hotkey::HotkeyService;
+
+    assert_eq!(
+        HotkeyService::to_gtk_accelerator("Ctrl+Alt+D").unwrap(),
+        "<Control><Alt>d"
+    );
+    assert_eq!(
+        HotkeyService::to_gtk_accelerator("<Control><Shift>space").unwrap(),
+        "<Control><Shift>space"
+    );
+    assert_eq!(
+        HotkeyService::to_gtk_accelerator("Super+F9").unwrap(),
+        "<Super>F9"
+    );
+}

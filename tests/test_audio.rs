@@ -442,3 +442,27 @@ Source #88
         );
     }
 }
+
+#[test]
+fn test_should_use_default_pulse_device_for_standard_profiles() {
+    // Standard hardware profiles ("System Default", "Headphones", "Handsfree") are routed via
+    // PULSE_SOURCE in PipeWire/PulseAudio and must open the default ALSA device (`default`)
+    // rather than grabbing a raw `hw:` or `iec958:` ALSA subdevice locked by PipeWire.
+    assert!(AudioRecorder::should_use_default_pulse_device(None));
+    assert!(AudioRecorder::should_use_default_pulse_device(Some(
+        "System Default"
+    )));
+    assert!(AudioRecorder::should_use_default_pulse_device(Some(
+        "default"
+    )));
+    assert!(AudioRecorder::should_use_default_pulse_device(Some(
+        "Headphones"
+    )));
+    assert!(AudioRecorder::should_use_default_pulse_device(Some(
+        "Handsfree"
+    )));
+    assert!(!AudioRecorder::should_use_default_pulse_device(Some(
+        "plughw:CARD=Mic,DEV=0"
+    )));
+}
+

@@ -528,3 +528,65 @@ fn test_minibar_recording_guard_with_warning_tooltip() {
         );
     }
 }
+
+#[test]
+fn test_evaluate_recording_readiness_warning() {
+    use opendictate::config::Config;
+
+    // 1. Default config (Cloud AI with empty API key) must return a clear readiness warning
+    let default_cfg = Config::default();
+    let warn = opendictate::ui::mini_bar::evaluate_recording_readiness_warning(&default_cfg);
+    assert!(
+        warn.is_some(),
+        "Cloud AI with empty API key must return a readiness warning before recording"
+    );
+    assert!(
+        warn.as_ref().unwrap().contains("API key") || warn.as_ref().unwrap().contains("Settings")
+    );
+
+    // 2. Cloud AI with valid non-empty API key returns None
+    let configured_cloud = Config {
+        ai_mode: "cloud".to_string(),
+        ai_provider: "groq".to_string(),
+        ai_api_key: "gsk_test_valid_key".to_string(),
+        ..Default::default()
+    };
+    assert_eq!(
+        opendictate::ui::mini_bar::evaluate_recording_readiness_warning(&configured_cloud),
+        None
+    );
+
+    // 3. Local AI with uninstalled custom model path returns a warning
+    let uninstalled_local = Config {
+        ai_mode: "local".to_string(),
+        local_model_id: "custom".to_string(),
+        local_custom_path: Some("/nonexistent/path/ggml-missing.bin".to_string()),
+        ..Default::default()
+    };
+    let local_warn =
+        opendictate::ui::mini_bar::evaluate_recording_readiness_warning(&uninstalled_local);
+    assert!(
+        local_warn.is_some(),
+        "Local AI with missing model file must return a readiness warning before recording"
+    );
+}
+
+#[test]
+fn test_minibar_expand_drawer_and_clipboard_helper() {
+    if gtk4::is_initialized_main_thread() || (!gtk4::is_initialized() && gtk4::init().is_ok()) {
+        let _ = libadwaita::init();
+        let (_window, minibar_widgets) = opendictate::ui::mini_bar::build_minibar_window();
+
+        assert!(!minibar_widgets.drawer_revealer.reveals_child());
+        minibar_widgets.expand_drawer();
+        assert!(minibar_widgets.drawer_revealer.reveals_child());
+        assert_eq!(
+            minibar_widgets.drawer_button.icon_name().as_deref(),
+            Some("pan-up-symbolic")
+        );
+
+        // Verify copy_text_to_clipboard helper executes cleanly without dropping X11 selection prematurely
+        opendictate::ui::mini_bar::copy_text_to_clipboard("Test persistent clipboard copy");
+    }
+}
+

@@ -228,6 +228,15 @@ impl MiniBarWidgets {
         }
     }
 
+    /// Expands the transcription preview drawer and synchronizes the chevron button state.
+    pub fn expand_drawer(&self) {
+        self.drawer_revealer.set_reveal_child(true);
+        self.drawer_button.set_icon_name("pan-up-symbolic");
+        self.drawer_button
+            .set_tooltip_text(Some("Collapse Transcription Preview"));
+        self.window.queue_resize();
+    }
+
     /// Dynamically scales the MiniBar pill, buttons, icons, visualizer, and dropdown.
     /// `scale_percent` is clamped between 70 and 200 (default 100).
     pub fn apply_scale(&self, scale_percent: u32) {
@@ -262,6 +271,72 @@ impl MiniBarWidgets {
         self.visualizer_area.queue_draw();
         self.window.queue_resize();
     }
+}
+
+/// Evaluates whether the active configuration is ready for dictation recording.
+/// Returns `Some(warning_message)` if Cloud AI has no API key (and is not Ollama)
+/// or if Local AI's selected Whisper model `.bin` file is not yet downloaded.
+pub fn evaluate_recording_readiness_warning(config: &crate::config::Config) -> Option<String> {
+    if config.ai_mode.trim().eq_ignore_ascii_case("local") {
+        let mid = if config.local_model_id.trim().is_empty() {
+            "tiny.en"
+        } else {
+            config.local_model_id.trim()
+        };
+        if !crate::services::ai::local_ai::is_model_installed(
+            mid,
+            config.local_custom_path.as_deref(),
+        ) {
+            if mid == "custom" {
+                return Some(
+                    "Custom Whisper model (.bin) not found. Select a valid .bin file in Settings."
+                        .to_string(),
+                );
+            } else {
+                return Some(format!(
+                    "Local Whisper model '{}' is not installed. Click Download in Settings first.",
+                    mid
+                ));
+            }
+        }
+        None
+    } else {
+        let prov = config.ai_provider.trim().to_lowercase();
+        if prov != "ollama" && config.ai_api_key.trim().is_empty() {
+            return Some(
+                "Please enter a Cloud AI API key or switch to Local AI in Settings.".to_string(),
+            );
+        }
+        None
+    }
+}
+
+/// Copies text to the system clipboard persistently on both Wayland and X11.
+/// Uses GTK4's native display clipboard plus a thread-local persistent `arboard::Clipboard`
+/// instance so X11 clipboard ownership is never dropped immediately after setting text.
+pub fn copy_text_to_clipboard(text: &str) {
+    if text.trim().is_empty() {
+        return;
+    }
+
+    if gtk4::is_initialized()
+        && let Some(display) = gtk4::gdk::Display::default()
+    {
+        display.clipboard().set_text(text);
+    }
+
+    thread_local! {
+        static PERSISTENT_CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
+    }
+    PERSISTENT_CLIPBOARD.with(|cell| {
+        let mut opt = cell.borrow_mut();
+        if opt.is_none() {
+            *opt = arboard::Clipboard::new().ok();
+        }
+        if let Some(ref mut clip) = *opt {
+            let _ = clip.set_text(text.to_string());
+        }
+    });
 }
 
 /// Applies dynamic CSS scaling rules for the MiniBar based on `scale_percent` (70%..=200%).
@@ -320,7 +395,8 @@ pub fn apply_minibar_scale_css(scale_percent: u32) {
     );
 
     SCALE_PROVIDER.with(|provider| {
-        provider.load_from_string(&css);
+        #[allow(deprecated)]
+        provider.load_from_data(&css);
     });
 }
 
@@ -749,7 +825,8 @@ pub fn ensure_minibar_css() {
         padding: 8px 12px;
     }
     "#;
-    provider.load_from_string(css);
+    #[allow(deprecated)]
+    provider.load_from_data(css);
     if let Some(display) = gtk4::gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
             &display,
@@ -847,10 +924,8 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     let drawer_w_clone = drawer_widgets.clone();
     copy_button.connect_clicked(move |_| {
         let text = drawer_w_clone.text();
-        if !text.is_empty()
-            && let Ok(mut clip) = arboard::Clipboard::new()
-        {
-            let _ = clip.set_text(text);
+        if !text.is_empty() {
+            copy_text_to_clipboard(&text);
         }
         copy_btn_clone.set_icon_name("object-select-symbolic");
         let btn = copy_btn_clone.clone();

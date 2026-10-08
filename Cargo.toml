@@ -10,8 +10,8 @@ repository = "https://github.com/hkumarsaikia/OpenDictate"
 
 [dependencies]
 relm4 = "0.9"
-gtk4 = { version = "0.9", features = ["v4_12"] }
-libadwaita = { version = "0.7", features = ["v1_5"] }
+gtk4 = "0.9"
+libadwaita = { version = "0.7", features = ["v1_1"] }
 tokio = { version = "1.38", features = ["full"] }
 async-trait = "0.1"
 cpal = "0.15"

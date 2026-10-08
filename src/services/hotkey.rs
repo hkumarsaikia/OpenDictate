@@ -98,6 +98,30 @@ impl ParsedShortcut {
         parts.push(&self.key);
         parts.join("+")
     }
+
+    /// Formats the parsed shortcut into a GTK4 accelerator string (e.g., `<Control><Alt>d`).
+    pub fn to_gtk_accelerator(&self) -> String {
+        let mut out = String::new();
+        if self.ctrl {
+            out.push_str("<Control>");
+        }
+        if self.alt {
+            out.push_str("<Alt>");
+        }
+        if self.shift {
+            out.push_str("<Shift>");
+        }
+        if self.super_key {
+            out.push_str("<Super>");
+        }
+        let gtk_key = match self.key.as_str() {
+            "Space" => "space".to_string(),
+            k if k.chars().count() == 1 => k.to_lowercase(),
+            other => other.to_string(),
+        };
+        out.push_str(&gtk_key);
+        out
+    }
 }
 
 /// Service managing hotkey registration, event parsing, and distribution.
@@ -230,6 +254,12 @@ impl HotkeyService {
     pub fn normalize(raw: &str) -> Result<String, HotkeyError> {
         let parsed = Self::parse_shortcut(raw)?;
         Ok(parsed.to_normalized_string())
+    }
+
+    /// Converts a shortcut string into a GTK4 accelerator string (e.g., `<Control><Alt>d`).
+    pub fn to_gtk_accelerator(raw: &str) -> Result<String, HotkeyError> {
+        let parsed = Self::parse_shortcut(raw)?;
+        Ok(parsed.to_gtk_accelerator())
     }
 
     /// Registers a shortcut associated with an action.

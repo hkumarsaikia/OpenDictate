@@ -182,16 +182,14 @@ pub fn build_preview_drawer() -> (gtk4::Revealer, PreviewDrawerWidgets) {
         tb_clear.set_text("");
     });
 
-    // Connect copy button to arboard clipboard
+    // Connect copy button to persistent system clipboard
     let tb_copy = text_buffer.clone();
     copy_button.connect_clicked(move |_| {
         let start = tb_copy.start_iter();
         let end = tb_copy.end_iter();
         let text = tb_copy.text(&start, &end, false).to_string();
-        if !text.trim().is_empty()
-            && let Ok(mut clip) = arboard::Clipboard::new()
-        {
-            let _ = clip.set_text(text);
+        if !text.trim().is_empty() {
+            crate::ui::mini_bar::copy_text_to_clipboard(&text);
         }
     });
 
