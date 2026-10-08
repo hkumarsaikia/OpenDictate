@@ -177,6 +177,7 @@ pub fn build_header_bar(
     config: &Config,
     storage: &StorageService,
 ) -> (libadwaita::HeaderBar, HeaderBarWidgets) {
+    crate::ui::theme::ensure_app_icons_registered();
     ensure_main_menu_css();
     let header_bar = libadwaita::HeaderBar::new();
     header_bar.set_show_end_title_buttons(true);

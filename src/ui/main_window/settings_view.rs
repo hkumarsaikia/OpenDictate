@@ -1188,6 +1188,7 @@ pub fn update_local_model_status_ui(
 
 /// Constructs the Libadwaita PreferencesPage configured with OpenDictate settings cards.
 pub fn build_settings_view(config: &Config) -> (libadwaita::PreferencesPage, SettingsViewWidgets) {
+    crate::ui::theme::ensure_app_icons_registered();
     let lang = if config.ui_language.is_empty() {
         "en"
     } else {

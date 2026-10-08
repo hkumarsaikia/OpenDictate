@@ -836,6 +836,7 @@ pub fn ensure_minibar_css() {
 
 /// Builds the MiniBar widgets and attaches them directly to the provided window.
 pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
+    crate::ui::theme::ensure_app_icons_registered();
     ensure_minibar_css();
 
     // Outer column holding pill and expandable drawer

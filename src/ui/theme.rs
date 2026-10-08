@@ -63,6 +63,14 @@ const SVG_ICON_LIGHT: &str = include_str!("assets/brand/opendictate-light.svg");
 
 const SYMBOLIC_ICONS: &[(&str, &str)] = &[
     (
+        "adw-entry-apply-symbolic.svg",
+        include_str!("assets/symbolic/adw-entry-apply-symbolic.svg"),
+    ),
+    (
+        "adw-entry-edit-symbolic.svg",
+        include_str!("assets/symbolic/adw-entry-edit-symbolic.svg"),
+    ),
+    (
         "adw-external-link-symbolic.svg",
         include_str!("assets/symbolic/adw-external-link-symbolic.svg"),
     ),
@@ -81,6 +89,10 @@ const SYMBOLIC_ICONS: &[(&str, &str)] = &[
     (
         "dialog-warning-symbolic.svg",
         include_str!("assets/symbolic/dialog-warning-symbolic.svg"),
+    ),
+    (
+        "document-edit-symbolic.svg",
+        include_str!("assets/symbolic/document-edit-symbolic.svg"),
     ),
     (
         "edit-clear-symbolic.svg",
@@ -167,6 +179,10 @@ const SYMBOLIC_ICONS: &[(&str, &str)] = &[
         include_str!("assets/symbolic/pan-up-symbolic.svg"),
     ),
     (
+        "process-working-symbolic.svg",
+        include_str!("assets/symbolic/process-working-symbolic.svg"),
+    ),
+    (
         "system-help-symbolic.svg",
         include_str!("assets/symbolic/system-help-symbolic.svg"),
     ),
@@ -201,6 +217,18 @@ const SYMBOLIC_ICONS: &[(&str, &str)] = &[
     (
         "window-close-symbolic.svg",
         include_str!("assets/symbolic/window-close-symbolic.svg"),
+    ),
+    (
+        "window-maximize-symbolic.svg",
+        include_str!("assets/symbolic/window-maximize-symbolic.svg"),
+    ),
+    (
+        "window-minimize-symbolic.svg",
+        include_str!("assets/symbolic/window-minimize-symbolic.svg"),
+    ),
+    (
+        "window-restore-symbolic.svg",
+        include_str!("assets/symbolic/window-restore-symbolic.svg"),
     ),
     (
         "zoom-in-symbolic.svg",
@@ -252,6 +280,14 @@ pub fn ensure_app_icons_registered() {
         if !ICON_THEME_REGISTERED.swap(true, Ordering::SeqCst)
             && let Some(display) = gtk4::gdk::Display::default()
         {
+            let settings = gtk4::Settings::for_display(&display);
+            settings.set_gtk_icon_theme_name(Some("Adwaita"));
+            settings.connect_gtk_icon_theme_name_notify(|s| {
+                if s.gtk_icon_theme_name().as_deref() != Some("Adwaita") {
+                    s.set_gtk_icon_theme_name(Some("Adwaita"));
+                }
+            });
+
             let icon_theme = gtk4::IconTheme::for_display(&display);
             let manifest_brand =
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ui/assets/brand");

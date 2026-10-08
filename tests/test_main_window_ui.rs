@@ -1409,6 +1409,12 @@ fn test_embedded_symbolic_icons_and_purge_legacy_demo_dictations() {
     if gtk4::is_initialized_main_thread() || (!gtk4::is_initialized() && gtk4::init().is_ok()) {
         opendictate::ui::theme::ensure_app_icons_registered();
         if let Some(display) = gtk4::gdk::Display::default() {
+            let settings = gtk4::Settings::for_display(&display);
+            assert_eq!(
+                settings.gtk_icon_theme_name().as_deref(),
+                Some("Adwaita"),
+                "GTK icon theme must be locked to Adwaita so symbolic icons never fall back to broken host themes"
+            );
             let icon_theme = gtk4::IconTheme::for_display(&display);
             for icon in [
                 "weather-clear-symbolic",
@@ -1420,6 +1426,10 @@ fn test_embedded_symbolic_icons_and_purge_legacy_demo_dictations() {
                 "user-trash-symbolic",
                 "view-conceal-symbolic",
                 "view-reveal-symbolic",
+                "document-edit-symbolic",
+                "adw-entry-edit-symbolic",
+                "adw-entry-apply-symbolic",
+                "process-working-symbolic",
             ] {
                 assert!(
                     icon_theme.has_icon(icon),

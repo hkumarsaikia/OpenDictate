@@ -397,6 +397,7 @@ impl SimpleComponent for MainWindowModel {
     type Widgets = MainWindowWidgets;
 
     fn init_root() -> Self::Root {
+        crate::ui::theme::ensure_app_icons_registered();
         libadwaita::ApplicationWindow::builder()
             .title("Settings")
             .default_width(750)
@@ -409,6 +410,7 @@ impl SimpleComponent for MainWindowModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        crate::ui::theme::ensure_app_icons_registered();
         let mut model = MainWindowModel::new(init.config.clone(), init.storage.clone());
         model.set_minibar_visible(init.show_minibar);
         model.set_dashboard_visible(init.show_dashboard);
