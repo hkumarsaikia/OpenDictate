@@ -223,6 +223,7 @@ impl MainWindowModel {
             }
             MainWindowMsg::HideDashboard => {
                 self.dashboard_visible = false;
+                self.minibar_visible = true;
             }
             MainWindowMsg::SetAiProvider(provider) => {
                 self.config.ai_provider = provider;
@@ -415,6 +416,10 @@ impl SimpleComponent for MainWindowModel {
 
         // Build floating MiniBar island window and widgets
         let (minibar_window, minibar_widgets) = crate::ui::mini_bar::build_minibar_window();
+        let main_app = relm4::main_application();
+        if main_app.is_registered() {
+            main_app.add_window(&minibar_window);
+        }
         minibar_widgets.apply_scale(init.config.minibar_scale);
 
         // Attach DictationWorker background worker

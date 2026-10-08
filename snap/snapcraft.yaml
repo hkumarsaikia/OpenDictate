@@ -40,6 +40,8 @@ parts:
     plugin: rust
     source: .
     rust-channel: stable
+    build-environment:
+      - GGML_NATIVE: "OFF"
     build-packages:
       - build-essential
       - pkg-config

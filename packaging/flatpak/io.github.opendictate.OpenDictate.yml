@@ -39,6 +39,7 @@ modules:
     build-options:
       env:
         LIBCLANG_PATH: /usr/lib/sdk/llvm18/lib
+        GGML_NATIVE: 'OFF'
     build-commands:
       - cargo build --release --verbose
       - install -Dm755 target/release/opendictate /app/bin/opendictate

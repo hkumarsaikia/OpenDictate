@@ -151,6 +151,15 @@ fn main() {
         .with_broker(&MAIN_BROKER)
         .visible_on_activate(show_dashboard);
 
+    let is_first_activate = std::cell::Cell::new(true);
+    relm4::main_application().connect_activate(move |_| {
+        if is_first_activate.replace(false) {
+            return;
+        }
+        log::info!("Application re-activated via desktop launcher; presenting dashboard");
+        MAIN_BROKER.send(MainWindowMsg::ShowDashboard);
+    });
+
     app.run::<MainWindowModel>(MainWindowInit {
         config,
         storage,
