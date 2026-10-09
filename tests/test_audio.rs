@@ -491,9 +491,7 @@ Source #52
     assert_eq!(
         AudioRecorder::resolve_exclusive_source_from_pactl("Headphones", intel_sof_sources, "")
             .as_deref(),
-        Some(
-            "alsa_input.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__source"
-        )
+        Some("alsa_input.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__source")
     );
     assert_eq!(
         AudioRecorder::resolve_available_port_for_source(
@@ -597,9 +595,7 @@ fn test_normalize_speech_samples_and_clean_whisper_segment() {
         .collect();
     let normalized = normalize_speech_samples(&quiet_with_dc);
     let mean = normalized.iter().copied().sum::<f32>() / normalized.len() as f32;
-    let peak = normalized
-        .iter()
-        .fold(0.0_f32, |acc, &x| acc.max(x.abs()));
+    let peak = normalized.iter().fold(0.0_f32, |acc, &x| acc.max(x.abs()));
     assert!(mean.abs() < 0.01, "Mean should be near zero, got {}", mean);
     assert!(
         peak > 0.50 && peak <= 0.85,
@@ -615,4 +611,90 @@ fn test_normalize_speech_samples_and_clean_whisper_segment() {
         clean_whisper_segment("Hello world [BLANK_AUDIO] testing live dictation"),
         "Hello world testing live dictation"
     );
+}
+
+#[test]
+fn test_snap_audio_capture_and_combo_jack_regression() {
+    use opendictate::audio::recorder::normalize_speech_samples;
+
+    // 1. Realtek ALC257 / Lenovo combo jack: when 3.5mm headphones are plugged in
+    // (`analog-output-headphones: ... available)`), profile is classified as "Headphones".
+    // When `analog-input-mic` is "not available" (TRS headphones), `resolve_available_port_for_source`
+    // falls back to `analog-input-internal-mic`; when `analog-input-mic` is available (TRRS headset),
+    // it selects `analog-input-mic`.
+    let alc257_trs_sources = r#"
+Source #59
+	State: SUSPENDED
+	Name: alsa_input.pci-0000_05_00.6.analog-stereo
+	Description: Ryzen HD Audio Controller Analog Stereo
+	Ports:
+		analog-input-internal-mic: Internal Microphone (type: Mic, priority: 8900, availability group: Legacy 1, availability unknown)
+		analog-input-mic: Microphone (type: Mic, priority: 8700, availability group: Legacy 2, not available)
+	Active Port: analog-input-internal-mic
+"#;
+    let alc257_cards_with_hp = r#"
+Card #51
+	Name: alsa_card.pci-0000_05_00.6
+	Ports:
+		analog-input-internal-mic: Internal Microphone (type: Mic, priority: 8900, availability unknown)
+		analog-input-mic: Microphone (type: Mic, priority: 8700, not available)
+		analog-output-speaker: Speakers (type: Speaker, priority: 10000, not available)
+		analog-output-headphones: Headphones (type: Headphones, priority: 9900, available)
+"#;
+    assert_eq!(
+        AudioRecorder::classify_hardware_profile_from_sources_and_cards(
+            alc257_trs_sources,
+            alc257_cards_with_hp,
+            &[]
+        ),
+        "Headphones"
+    );
+    assert_eq!(
+        AudioRecorder::resolve_available_port_for_source(
+            alc257_trs_sources,
+            "alsa_input.pci-0000_05_00.6.analog-stereo",
+            "Headphones"
+        )
+        .as_deref(),
+        Some("analog-input-internal-mic")
+    );
+
+    let alc257_trrs_sources = alc257_trs_sources.replace("not available", "available");
+    assert_eq!(
+        AudioRecorder::resolve_available_port_for_source(
+            &alc257_trrs_sources,
+            "alsa_input.pci-0000_05_00.6.analog-stereo",
+            "Headphones"
+        )
+        .as_deref(),
+        Some("analog-input-mic")
+    );
+
+    // 2. Wake-up pop during the first 40ms (640 samples at 16kHz) must not prevent
+    // speech normalization on the rest of a 0.5s (8000-sample) recording.
+    let mut pop_then_quiet_speech = vec![0.0f32; 8000];
+    for s in &mut pop_then_quiet_speech[..320] {
+        *s = 0.99; // Simulated hardware wake-up rail pop in first 20ms
+    }
+    for (i, s) in pop_then_quiet_speech[1280..].iter_mut().enumerate() {
+        *s = 0.04 * ((i as f32) * 0.15).sin(); // Quiet voice after 80ms
+    }
+    let norm = normalize_speech_samples(&pop_then_quiet_speech);
+    let tail_peak = norm[1280..].iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
+    assert!(
+        tail_peak > 0.35,
+        "Speech after hardware wake-up pop must still be normalized, got tail_peak={}",
+        tail_peak
+    );
+
+    // 3. Verify live AudioRecorder start/stop works cleanly without locking PipeWire (EBUSY)
+    for profile in ["System Default", "Headphones"] {
+        let mut rec = AudioRecorder::new(Some(profile.to_string())).unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(32);
+        if rec.start_recording(tx).is_ok() {
+            std::thread::sleep(std::time::Duration::from_millis(220));
+            let wav = rec.stop_recording().expect("stop_recording should succeed");
+            assert!(wav.len() > 44, "Recorded WAV must contain audio frames");
+        }
+    }
 }

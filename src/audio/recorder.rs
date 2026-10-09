@@ -165,25 +165,46 @@ pub fn normalize_speech_samples(samples: &[f32]) -> Vec<f32> {
     if samples.is_empty() {
         return Vec::new();
     }
-    let mean = samples.iter().copied().sum::<f32>() / samples.len() as f32;
+    // Skip initial 80ms (1280 samples at 16kHz) when measuring DC mean, peak, and RMS
+    // on recordings longer than 150ms (2400 samples) so hardware ADC wake-up pops
+    // never skew DC centering or prevent speech dynamic range normalization.
+    let measure_slice = if samples.len() > 2400 {
+        &samples[1280..]
+    } else {
+        samples
+    };
+    let mean = measure_slice.iter().copied().sum::<f32>() / measure_slice.len() as f32;
     let mut peak = 0.0f32;
     let mut sum_sq = 0.0f32;
-    let mut centered = Vec::with_capacity(samples.len());
-    for &s in samples {
+    for &s in measure_slice {
         let c = (s - mean).clamp(-1.0, 1.0);
         let a = c.abs();
         if a > peak {
             peak = a;
         }
         sum_sq += c * c;
-        centered.push(c);
     }
-    let rms = (sum_sq / samples.len() as f32).sqrt();
-    if peak >= 0.004 && rms >= 0.0015 && peak < 0.75 {
-        let gain = (0.80 / peak).min(12.0);
-        for s in &mut centered {
-            *s = (*s * gain).clamp(-1.0, 1.0);
-        }
+    let rms = (sum_sq / measure_slice.len() as f32).sqrt();
+    let gain = if peak >= 0.004 && rms >= 0.0015 && peak < 0.75 {
+        (0.80 / peak).min(12.0)
+    } else {
+        1.0
+    };
+
+    let fade_len = if samples.len() > 2400 {
+        640usize
+    } else {
+        0usize
+    };
+    let mut centered = Vec::with_capacity(samples.len());
+    for (i, &s) in samples.iter().enumerate() {
+        let fade = if i < fade_len {
+            i as f32 / fade_len as f32
+        } else {
+            1.0
+        };
+        let c = ((s - mean) * fade * gain).clamp(-1.0, 1.0);
+        centered.push(c);
     }
     centered
 }
@@ -194,9 +215,15 @@ pub struct AudioBufferSnapshot {
     buffer: Arc<Mutex<Vec<f32>>>,
     sample_rate: Arc<AtomicU32>,
     is_paused: Arc<AtomicBool>,
+    stream_error: Arc<AtomicBool>,
 }
 
 impl AudioBufferSnapshot {
+    /// Atomically checks and clears any hardware stream disconnection/error flag.
+    pub fn take_stream_error(&self) -> bool {
+        self.stream_error.swap(false, Ordering::SeqCst)
+    }
+
     /// Captures a non-destructive 16kHz 16-bit PCM WAV snapshot of up to the most recent
     /// `max_seconds` of recorded audio without stopping or clearing the active stream.
     /// Returns `Ok(Some((wav_bytes, total_sample_count)))` when at least 0.40s of voice audio is available.
@@ -214,7 +241,7 @@ impl AudioBufferSnapshot {
             };
             if buf.len() < min_samples {
                 return Ok(None);
-            }
+            };
             let total = buf.len();
             let start = total.saturating_sub(max_samples);
             (buf[start..].to_vec(), total)
@@ -246,6 +273,7 @@ pub struct AudioRecorder {
     device_name: Option<String>,
     is_recording: Arc<AtomicBool>,
     is_paused: Arc<AtomicBool>,
+    stream_error: Arc<AtomicBool>,
     stream: Option<cpal::Stream>,
     buffer: Arc<Mutex<Vec<f32>>>,
     sample_rate: Arc<AtomicU32>,
@@ -284,6 +312,45 @@ pub fn silence_alsa_logging() {
                 }
             }
 
+            // Ensure pulseaudio private shared libraries (libpulsecommon-*.so) are in LD_LIBRARY_PATH
+            // without overriding top-level libc.so.6
+            let mut pulse_lib_dirs = Vec::new();
+            for candidate in [
+                format!("{}/usr/lib/x86_64-linux-gnu/pulseaudio", root),
+                format!("{}/usr/lib/aarch64-linux-gnu/pulseaudio", root),
+                format!(
+                    "{}/gnome-platform/usr/lib/x86_64-linux-gnu/pulseaudio",
+                    root
+                ),
+                format!(
+                    "{}/gnome-platform/usr/lib/aarch64-linux-gnu/pulseaudio",
+                    root
+                ),
+                "/snap/gnome-46-2404/current/usr/lib/x86_64-linux-gnu/pulseaudio".to_string(),
+                "/snap/gnome-46-2404/current/usr/lib/aarch64-linux-gnu/pulseaudio".to_string(),
+            ] {
+                if std::path::Path::new(&candidate).is_dir() && !pulse_lib_dirs.contains(&candidate)
+                {
+                    pulse_lib_dirs.push(candidate);
+                }
+            }
+            if !pulse_lib_dirs.is_empty() {
+                let current_ld = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+                let mut parts: Vec<String> = if current_ld.is_empty() {
+                    Vec::new()
+                } else {
+                    current_ld.split(':').map(|s| s.to_string()).collect()
+                };
+                for p in pulse_lib_dirs {
+                    if !parts.iter().any(|existing| existing == &p) {
+                        parts.push(p);
+                    }
+                }
+                unsafe {
+                    std::env::set_var("LD_LIBRARY_PATH", parts.join(":"));
+                }
+            }
+
             // Ensure ALSA_PLUGIN_DIR points to bundled alsa-lib plugins across any CPU architecture or distro layout
             for plugin_candidate in [
                 format!("{}/usr/lib/x86_64-linux-gnu/alsa-lib", root),
@@ -301,7 +368,9 @@ pub fn silence_alsa_logging() {
                 }
             }
 
-            // Ensure ALSA_CONFIG_DIR and ALSA_CONFIG_PATH include alsa.conf + 50-pulseaudio.conf + asound.conf
+            // Ensure ALSA_CONFIG_DIR and ALSA_CONFIG_PATH point to alsa.conf, and write
+            // $XDG_CONFIG_HOME/alsa/asoundrc so alsa.conf's @hooks routes "default" and "pulse"
+            // to PulseAudio/PipeWire instead of card 0 (which is often HDMI output-only).
             let snap_alsa = format!("{}/usr/share/alsa", root);
             let gnome_alsa = format!("{}/gnome-platform/usr/share/alsa", root);
             let alsa_dir = if std::path::Path::new(&format!("{}/alsa.conf", snap_alsa)).exists() {
@@ -313,23 +382,48 @@ pub fn silence_alsa_logging() {
             };
 
             if let Some(ref dir) = alsa_dir
-                && (env_key == "SNAP" || !std::path::Path::new("/usr/share/alsa/alsa.conf").exists())
+                && (env_key == "SNAP"
+                    || !std::path::Path::new("/usr/share/alsa/alsa.conf").exists())
             {
                 unsafe {
                     std::env::set_var("ALSA_CONFIG_DIR", dir);
+                    std::env::set_var("ALSA_CONFIG_PATH", format!("{}/alsa.conf", dir));
                 }
-                let mut config_files = vec![format!("{}/alsa.conf", dir)];
-                for extra in [
-                    format!("{}/alsa.conf.d/50-pulseaudio.conf", dir),
-                    format!("{}/usr/share/alsa/alsa.conf.d/50-pulseaudio.conf", root),
-                    format!("{}/etc/asound.conf", root),
-                ] {
-                    if std::path::Path::new(&extra).exists() && !config_files.contains(&extra) {
-                        config_files.push(extra);
+
+                let asoundrc_content = "\
+pcm.!default {
+    type pulse
+    fallback \"sysdefault\"
+    hint {
+        show on
+        description \"Default ALSA Output (currently PulseAudio/PipeWire Sound Server)\"
+    }
+}
+ctl.!default {
+    type pulse
+    fallback \"sysdefault\"
+}
+pcm.pulse {
+    type pulse
+    hint {
+        show on
+        description \"PulseAudio/PipeWire Sound Server\"
+    }
+}
+ctl.pulse {
+    type pulse
+}
+";
+                let xdg_cfg = std::env::var("XDG_CONFIG_HOME").ok().or_else(|| {
+                    std::env::var("HOME")
+                        .ok()
+                        .map(|h| format!("{}/.config", h.trim_end_matches('/')))
+                });
+                if let Some(cfg_root) = xdg_cfg {
+                    let alsa_cfg_dir = std::path::PathBuf::from(&cfg_root).join("alsa");
+                    if std::fs::create_dir_all(&alsa_cfg_dir).is_ok() {
+                        let _ = std::fs::write(alsa_cfg_dir.join("asoundrc"), asoundrc_content);
                     }
-                }
-                unsafe {
-                    std::env::set_var("ALSA_CONFIG_PATH", config_files.join(":"));
                 }
             }
         }
@@ -362,6 +456,7 @@ pub fn silence_alsa_logging() {
 pub fn silence_alsa_logging() {}
 
 fn resolve_pactl_binary() -> String {
+    silence_alsa_logging();
     for env_key in ["SNAP", "APPDIR"] {
         if let Ok(root) = std::env::var(env_key) {
             let candidate = format!("{}/usr/bin/pactl", root.trim_end_matches('/'));
@@ -421,8 +516,7 @@ impl AudioRecorder {
                 if card_name.starts_with("bluez_card.") {
                     is_bt = true;
                 }
-            } else if t.contains("device.bus = \"bluetooth\"")
-                || t.contains("device.api = \"bluez")
+            } else if t.contains("device.bus = \"bluetooth\"") || t.contains("device.api = \"bluez")
             {
                 is_bt = true;
             } else if t == "Profiles:" {
@@ -530,6 +624,7 @@ impl AudioRecorder {
                         pid_lower.contains("headset-mic")
                             || pid_lower.contains("headphone-mic")
                             || pid_lower.contains("mic2")
+                            || pid_lower == "analog-input-mic"
                             || desc_lower.contains("headset")
                             || desc_lower.contains("headphones")
                     }
@@ -547,8 +642,95 @@ impl AudioRecorder {
                     return Some(port_id.clone());
                 }
             }
+
+            // If "Headphones" is selected with 3-pole TRS headphones plugged in (so external mic port
+            // is marked "not available"), fall back cleanly to the internal microphone port.
+            if target_profile == "Headphones" {
+                for (port_id, desc_lower) in &available_ports {
+                    let pid_lower = port_id.to_lowercase();
+                    if pid_lower.contains("internal-mic")
+                        || pid_lower.contains("mic1")
+                        || pid_lower.contains("dmic")
+                        || desc_lower.contains("internal")
+                        || desc_lower.contains("built-in")
+                        || desc_lower.contains("digital microphone")
+                    {
+                        return Some(port_id.clone());
+                    }
+                }
+            }
         }
         None
+    }
+
+    /// Ensures the selected PulseAudio/PipeWire source is neither muted/near-zero (`< 15%`)
+    /// nor over-driven into +60 dB hardware Internal Mic Boost saturation (`> 85%` when
+    /// `Base Volume <= -55.0 dB` on an `internal-mic` port). External/headset microphone
+    /// user volume sliders are never lowered.
+    fn ensure_healthy_source_gain(
+        sources_output: &str,
+        target_source: &str,
+        selected_port: Option<&str>,
+    ) {
+        for block in sources_output.split("Source #").skip(1) {
+            let mut is_target = false;
+            let mut vol_pct: Option<u32> = None;
+            let mut base_db: Option<f32> = None;
+            let mut active_port = String::new();
+
+            for line in block.lines() {
+                let t = line.trim();
+                if let Some(rest) = t.strip_prefix("Name:") {
+                    if rest.trim() == target_source {
+                        is_target = true;
+                    }
+                } else if is_target && t.starts_with("Volume:") && vol_pct.is_none() {
+                    for part in t.split('/') {
+                        let p = part.trim();
+                        if let Some(num_str) = p.strip_suffix('%')
+                            && let Ok(pct) = num_str.trim().parse::<u32>()
+                        {
+                            vol_pct = Some(pct);
+                            break;
+                        }
+                    }
+                } else if is_target && t.starts_with("Base Volume:") && base_db.is_none() {
+                    for part in t.split('/') {
+                        let p = part.trim();
+                        if let Some(db_str) = p.strip_suffix("dB")
+                            && let Ok(db) = db_str.trim().parse::<f32>()
+                        {
+                            base_db = Some(db);
+                            break;
+                        }
+                    }
+                } else if is_target && let Some(rest) = t.strip_prefix("Active Port:") {
+                    active_port = rest.trim().to_lowercase();
+                }
+            }
+
+            if !is_target {
+                continue;
+            }
+
+            let effective_port = selected_port
+                .map(|p| p.to_lowercase())
+                .unwrap_or(active_port);
+            let is_internal_mic = effective_port.contains("internal-mic");
+
+            if let Some(pct) = vol_pct {
+                if pct < 15 {
+                    run_pactl_status(&["set-source-volume", target_source, "50%"]);
+                } else if is_internal_mic
+                    && let Some(bdb) = base_db
+                    && bdb <= -55.0
+                    && pct > 85
+                {
+                    run_pactl_status(&["set-source-volume", target_source, "55%"]);
+                }
+            }
+            break;
+        }
     }
 
     /// Returns true if the requested profile name (`None`, `"System Default"`, `"default"`,
@@ -593,6 +775,7 @@ impl AudioRecorder {
             device_name,
             is_recording: Arc::new(AtomicBool::new(false)),
             is_paused: Arc::new(AtomicBool::new(false)),
+            stream_error: Arc::new(AtomicBool::new(false)),
             stream: None,
             buffer: Arc::new(Mutex::new(Vec::new())),
             sample_rate: Arc::new(AtomicU32::new(16000)),
@@ -696,10 +879,22 @@ impl AudioRecorder {
             }
         }
 
-        // Check Bluetooth cards that are connected and have an HFP/HSP/duplex input profile available
+        // Check Bluetooth cards that are connected and have an HFP/HSP/duplex input profile available,
+        // and check analog cards for plugged-in 3.5mm headphones (`analog-output-headphones: ... available)`).
         for card_block in cards_output.split("Card #").skip(1) {
             if resolve_bluetooth_input_profile_switch(card_block).is_some() {
                 return "Handsfree";
+            }
+            for line in card_block.lines() {
+                let t = line.trim();
+                if (t.starts_with("analog-output-headphones:")
+                    || t.starts_with("analog-input-headset-mic:")
+                    || t.starts_with("analog-input-headphone-mic:"))
+                    && t.contains("available)")
+                    && !t.contains("not available)")
+                {
+                    found_headphones = true;
+                }
             }
         }
 
@@ -848,9 +1043,9 @@ impl AudioRecorder {
     }
 
     /// Query input devices and return only friendly human-readable microphone names.
+    /// Does not enumerate raw hardware ALSA `hw:` devices so PipeWire nodes are never locked.
     pub fn list_friendly_input_devices() -> Vec<String> {
-        let raw = Self::list_input_devices().unwrap_or_default();
-        Self::filter_and_standardize_devices(&raw)
+        Self::filter_and_standardize_devices(&[])
     }
 
     /// Query and list available input devices on the default host.
@@ -908,20 +1103,27 @@ impl AudioRecorder {
         if let Some(exclusive_source) =
             Self::resolve_exclusive_source_from_pactl(target_profile, &sources_out, &cards_out)
         {
-            if let Some(port_id) =
-                resolve_available_port_for_source(&sources_out, &exclusive_source, target_profile)
-            {
-                run_pactl_status(&["set-source-port", &exclusive_source, &port_id]);
+            let selected_port =
+                resolve_available_port_for_source(&sources_out, &exclusive_source, target_profile);
+            if let Some(ref port_id) = selected_port {
+                run_pactl_status(&["set-source-port", &exclusive_source, port_id]);
             }
             run_pactl_status(&["set-source-mute", &exclusive_source, "0"]);
+            Self::ensure_healthy_source_gain(
+                &sources_out,
+                &exclusive_source,
+                selected_port.as_deref(),
+            );
             run_pactl_status(&["set-default-source", &exclusive_source]);
             unsafe {
                 std::env::set_var("PULSE_SOURCE", &exclusive_source);
+                std::env::set_var("PIPEWIRE_NODE", &exclusive_source);
             }
             pulse_source_was_set = true;
         } else if target_profile == "System Default" || target_profile == "default" {
             unsafe {
                 std::env::remove_var("PULSE_SOURCE");
+                std::env::remove_var("PIPEWIRE_NODE");
             }
         }
 
@@ -929,296 +1131,313 @@ impl AudioRecorder {
             buf.clear();
         }
         self.is_paused.store(false, Ordering::SeqCst);
+        self.stream_error.store(false, Ordering::SeqCst);
 
-        let collect_candidate_devices = |host: &cpal::Host| -> Vec<cpal::Device> {
-            let mut candidates: Vec<cpal::Device> = Vec::new();
-            let mut push_unique = |dev: cpal::Device| {
-                let name = dev.name().unwrap_or_default();
-                let lower = name.trim().to_lowercase();
-                if lower == "null"
-                    || lower.ends_with(".monitor")
-                    || lower.starts_with("iec958:")
-                    || lower.starts_with("hdmi:")
-                    || lower.starts_with("surround")
-                {
-                    return;
+        // CRITICAL: Never hold multiple `cpal::Device` instances open simultaneously!
+        // In cpal's ALSA backend, each `cpal::Device` keeps an open `snd_pcm_t` capture handle
+        // for its entire lifetime. Holding `front:CARD=...` or `hw:CARD=...` in a Vec locks
+        // `/dev/snd/pcmC*D*c` with EBUSY and prevents PipeWire/PulseAudio from waking the mic!
+        let find_single_device =
+            |host: &cpal::Host, match_fn: &dyn Fn(&str) -> bool| -> Option<cpal::Device> {
+                let mut matched = None;
+                if let Ok(devices) = host.input_devices() {
+                    for dev in devices {
+                        if matched.is_none()
+                            && let Ok(name) = dev.name()
+                            && match_fn(name.trim())
+                        {
+                            matched = Some(dev);
+                        }
+                        // All non-matching `dev` instances are dropped immediately at the end of each iteration,
+                        // releasing their ALSA `snd_pcm_t` handles before we attempt to open the stream.
+                    }
                 }
-                if !candidates
-                    .iter()
-                    .any(|c| c.name().ok().as_deref() == Some(name.as_str()))
-                {
-                    candidates.push(dev);
-                }
+                matched
             };
 
+        let is_blacklisted_alsa_device = |name: &str| -> bool {
+            let lower = name.trim().to_lowercase();
+            lower == "null"
+                || lower.ends_with(".monitor")
+                || lower.starts_with("iec958:")
+                || lower.starts_with("hdmi:")
+                || lower.starts_with("surround")
+                || lower.starts_with("dsnoop:")
+                || lower.starts_with("dmix:")
+        };
+
+        let try_open_on_device =
+            |device: &cpal::Device| -> Result<(cpal::Stream, u32), AudioError> {
+                let supported_config = match device.default_input_config() {
+                    Ok(cfg) => cfg,
+                    Err(first_err) => {
+                        let mut fallback_cfg = None;
+                        if let Ok(mut ranges) = device.supported_input_configs()
+                            && let Some(range) = ranges.next()
+                        {
+                            for preferred_rate in [48000, 44100, 16000, 32000, 24000, 8000] {
+                                let sr = cpal::SampleRate(preferred_rate);
+                                if sr >= range.min_sample_rate() && sr <= range.max_sample_rate() {
+                                    fallback_cfg = Some(range.with_sample_rate(sr));
+                                    break;
+                                }
+                            }
+                            if fallback_cfg.is_none() {
+                                fallback_cfg = Some(range.with_max_sample_rate());
+                            }
+                        }
+                        match fallback_cfg {
+                            Some(cfg) => cfg,
+                            None => return Err(AudioError::from(first_err)),
+                        }
+                    }
+                };
+
+                let sample_format = supported_config.sample_format();
+                let stream_config: cpal::StreamConfig = supported_config.into();
+                let native_rate = stream_config.sample_rate.0;
+                let channels = stream_config.channels as usize;
+
+                let buffer = Arc::clone(&self.buffer);
+                let is_paused = Arc::clone(&self.is_paused);
+                let last_level_time = Arc::new(Mutex::new(Instant::now()));
+                let dc_state: Arc<Mutex<Option<(f32, f32)>>> = Arc::new(Mutex::new(None));
+                let stream_start_time = Instant::now();
+                let level_tx = level_tx.clone();
+                let stream_error_flag = Arc::clone(&self.stream_error);
+                let is_recording_flag = Arc::clone(&self.is_recording);
+
+                let err_fn = move |err: cpal::StreamError| {
+                    log::error!("Audio stream error: {}", err);
+                    stream_error_flag.store(true, Ordering::SeqCst);
+                    is_recording_flag.store(false, Ordering::SeqCst);
+                    crate::services::crash_reporter::CrashReporter::record_event(
+                        "AudioStream",
+                        &format!("Hardware audio stream error: {}", err),
+                    );
+                };
+
+                let stream = match sample_format {
+                    cpal::SampleFormat::F32 => device.build_input_stream(
+                        &stream_config,
+                        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                            handle_audio_input(
+                                data,
+                                channels,
+                                &buffer,
+                                &is_paused,
+                                &last_level_time,
+                                &dc_state,
+                                stream_start_time,
+                                &level_tx,
+                            );
+                        },
+                        err_fn,
+                        None,
+                    )?,
+                    cpal::SampleFormat::I16 => device.build_input_stream(
+                        &stream_config,
+                        move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                            let f32_data: Vec<f32> =
+                                data.iter().map(|&s| s as f32 / 32768.0).collect();
+                            handle_audio_input(
+                                &f32_data,
+                                channels,
+                                &buffer,
+                                &is_paused,
+                                &last_level_time,
+                                &dc_state,
+                                stream_start_time,
+                                &level_tx,
+                            );
+                        },
+                        err_fn,
+                        None,
+                    )?,
+                    cpal::SampleFormat::U16 => device.build_input_stream(
+                        &stream_config,
+                        move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                            let f32_data: Vec<f32> = data
+                                .iter()
+                                .map(|&s| (s as f32 - 32768.0) / 32768.0)
+                                .collect();
+                            handle_audio_input(
+                                &f32_data,
+                                channels,
+                                &buffer,
+                                &is_paused,
+                                &last_level_time,
+                                &dc_state,
+                                stream_start_time,
+                                &level_tx,
+                            );
+                        },
+                        err_fn,
+                        None,
+                    )?,
+                    cpal::SampleFormat::I32 => device.build_input_stream(
+                        &stream_config,
+                        move |data: &[i32], _: &cpal::InputCallbackInfo| {
+                            let f32_data: Vec<f32> =
+                                data.iter().map(|&s| s as f32 / 2147483648.0).collect();
+                            handle_audio_input(
+                                &f32_data,
+                                channels,
+                                &buffer,
+                                &is_paused,
+                                &last_level_time,
+                                &dc_state,
+                                stream_start_time,
+                                &level_tx,
+                            );
+                        },
+                        err_fn,
+                        None,
+                    )?,
+                    cpal::SampleFormat::I8 => device.build_input_stream(
+                        &stream_config,
+                        move |data: &[i8], _: &cpal::InputCallbackInfo| {
+                            let f32_data: Vec<f32> =
+                                data.iter().map(|&s| s as f32 / 128.0).collect();
+                            handle_audio_input(
+                                &f32_data,
+                                channels,
+                                &buffer,
+                                &is_paused,
+                                &last_level_time,
+                                &dc_state,
+                                stream_start_time,
+                                &level_tx,
+                            );
+                        },
+                        err_fn,
+                        None,
+                    )?,
+                    cpal::SampleFormat::U8 => device.build_input_stream(
+                        &stream_config,
+                        move |data: &[u8], _: &cpal::InputCallbackInfo| {
+                            let f32_data: Vec<f32> =
+                                data.iter().map(|&s| (s as f32 - 128.0) / 128.0).collect();
+                            handle_audio_input(
+                                &f32_data,
+                                channels,
+                                &buffer,
+                                &is_paused,
+                                &last_level_time,
+                                &dc_state,
+                                stream_start_time,
+                                &level_tx,
+                            );
+                        },
+                        err_fn,
+                        None,
+                    )?,
+                    cpal::SampleFormat::F64 => device.build_input_stream(
+                        &stream_config,
+                        move |data: &[f64], _: &cpal::InputCallbackInfo| {
+                            let f32_data: Vec<f32> = data.iter().map(|&s| s as f32).collect();
+                            handle_audio_input(
+                                &f32_data,
+                                channels,
+                                &buffer,
+                                &is_paused,
+                                &last_level_time,
+                                &dc_state,
+                                stream_start_time,
+                                &level_tx,
+                            );
+                        },
+                        err_fn,
+                        None,
+                    )?,
+                    _ => {
+                        return Err(AudioError::StreamBuildError(
+                            "Unsupported audio sample format".to_string(),
+                        ));
+                    }
+                };
+
+                stream.play()?;
+                Ok((stream, native_rate))
+            };
+
+        let attempt_open_sequence = |host: &cpal::Host| -> Result<(cpal::Stream, u32), AudioError> {
+            let mut last_err = AudioError::DefaultDeviceNotFound;
+
+            // 1. If a custom non-standard ALSA device name was requested, try it first
             if !Self::should_use_default_pulse_device(self.device_name.as_deref())
                 && let Some(ref req_name) = self.device_name
             {
                 let req_lower = req_name.to_lowercase();
-                if let Ok(devices) = host.input_devices() {
-                    for dev in devices {
-                        if let Ok(n) = dev.name()
-                            && n.to_lowercase().contains(&req_lower)
-                        {
-                            push_unique(dev);
-                        }
+                if let Some(dev) = find_single_device(host, &|n| {
+                    !is_blacklisted_alsa_device(n) && n.to_lowercase().contains(&req_lower)
+                }) {
+                    match try_open_on_device(&dev) {
+                        Ok(res) => return Ok(res),
+                        Err(e) => last_err = e,
+                    }
+                }
+            }
+
+            // 2. Try PulseAudio / PipeWire / Default sound-server devices one at a time
+            // (never holding raw hw:/front: devices open while opening PulseAudio/PipeWire!)
+            for preferred in ["pulse", "pipewire", "default"] {
+                if let Some(dev) = find_single_device(host, &|n| n.eq_ignore_ascii_case(preferred))
+                {
+                    // Small settle delay after dropping enumerated hardware handles so PipeWire
+                    // can claim the underlying ALSA PCM node without EBUSY
+                    std::thread::sleep(Duration::from_millis(30));
+                    match try_open_on_device(&dev) {
+                        Ok(res) => return Ok(res),
+                        Err(e) => last_err = e,
                     }
                 }
             }
 
             if let Some(def_dev) = host.default_input_device() {
-                push_unique(def_dev);
+                match try_open_on_device(&def_dev) {
+                    Ok(res) => return Ok(res),
+                    Err(e) => last_err = e,
+                }
             }
 
+            // 3. Fallback: try sysdefault or remaining non-blacklisted devices one by one
+            let mut fallback_names = Vec::new();
             if let Ok(devices) = host.input_devices() {
-                let all_devs: Vec<cpal::Device> = devices.collect();
-                for preferred in ["pulse", "pipewire", "default", "sysdefault"] {
-                    for dev in &all_devs {
-                        if let Ok(n) = dev.name()
-                            && n.trim().eq_ignore_ascii_case(preferred)
-                        {
-                            push_unique(dev.clone());
-                        }
+                for dev in devices {
+                    if let Ok(n) = dev.name()
+                        && !is_blacklisted_alsa_device(&n)
+                    {
+                        fallback_names.push(n);
                     }
-                }
-                for dev in all_devs {
-                    push_unique(dev);
                 }
             }
-            candidates
-        };
-
-        let try_open_on_device = |device: &cpal::Device| -> Result<(cpal::Stream, u32), AudioError> {
-            let supported_config = match device.default_input_config() {
-                Ok(cfg) => cfg,
-                Err(first_err) => {
-                    let mut fallback_cfg = None;
-                    if let Ok(mut ranges) = device.supported_input_configs()
-                        && let Some(range) = ranges.next()
-                    {
-                        for preferred_rate in [48000, 44100, 16000, 32000, 24000, 8000] {
-                            let sr = cpal::SampleRate(preferred_rate);
-                            if sr >= range.min_sample_rate() && sr <= range.max_sample_rate() {
-                                fallback_cfg = Some(range.with_sample_rate(sr));
-                                break;
-                            }
-                        }
-                        if fallback_cfg.is_none() {
-                            fallback_cfg = Some(range.with_max_sample_rate());
-                        }
-                    }
-                    match fallback_cfg {
-                        Some(cfg) => cfg,
-                        None => return Err(AudioError::from(first_err)),
+            for name in fallback_names {
+                if let Some(dev) = find_single_device(host, &|n| n == name) {
+                    match try_open_on_device(&dev) {
+                        Ok(res) => return Ok(res),
+                        Err(e) => last_err = e,
                     }
                 }
-            };
+            }
 
-            let sample_format = supported_config.sample_format();
-            let stream_config: cpal::StreamConfig = supported_config.into();
-            let native_rate = stream_config.sample_rate.0;
-            let channels = stream_config.channels as usize;
-
-            let buffer = Arc::clone(&self.buffer);
-            let is_paused = Arc::clone(&self.is_paused);
-            let last_level_time = Arc::new(Mutex::new(Instant::now()));
-            let dc_state = Arc::new(Mutex::new((0.0f32, 0.0f32)));
-            let stream_start_time = Instant::now();
-            let level_tx = level_tx.clone();
-
-            let err_fn = |err: cpal::StreamError| {
-                log::error!("Audio stream error: {}", err);
-                crate::services::crash_reporter::CrashReporter::record_event(
-                    "AudioStream",
-                    &format!("Hardware audio stream error: {}", err),
-                );
-            };
-
-            let stream = match sample_format {
-                cpal::SampleFormat::F32 => device.build_input_stream(
-                    &stream_config,
-                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                        handle_audio_input(
-                            data,
-                            channels,
-                            &buffer,
-                            &is_paused,
-                            &last_level_time,
-                            &dc_state,
-                            stream_start_time,
-                            &level_tx,
-                        );
-                    },
-                    err_fn,
-                    None,
-                )?,
-                cpal::SampleFormat::I16 => device.build_input_stream(
-                    &stream_config,
-                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                        let f32_data: Vec<f32> =
-                            data.iter().map(|&s| s as f32 / 32768.0).collect();
-                        handle_audio_input(
-                            &f32_data,
-                            channels,
-                            &buffer,
-                            &is_paused,
-                            &last_level_time,
-                            &dc_state,
-                            stream_start_time,
-                            &level_tx,
-                        );
-                    },
-                    err_fn,
-                    None,
-                )?,
-                cpal::SampleFormat::U16 => device.build_input_stream(
-                    &stream_config,
-                    move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                        let f32_data: Vec<f32> = data
-                            .iter()
-                            .map(|&s| (s as f32 - 32768.0) / 32768.0)
-                            .collect();
-                        handle_audio_input(
-                            &f32_data,
-                            channels,
-                            &buffer,
-                            &is_paused,
-                            &last_level_time,
-                            &dc_state,
-                            stream_start_time,
-                            &level_tx,
-                        );
-                    },
-                    err_fn,
-                    None,
-                )?,
-                cpal::SampleFormat::I32 => device.build_input_stream(
-                    &stream_config,
-                    move |data: &[i32], _: &cpal::InputCallbackInfo| {
-                        let f32_data: Vec<f32> =
-                            data.iter().map(|&s| s as f32 / 2147483648.0).collect();
-                        handle_audio_input(
-                            &f32_data,
-                            channels,
-                            &buffer,
-                            &is_paused,
-                            &last_level_time,
-                            &dc_state,
-                            stream_start_time,
-                            &level_tx,
-                        );
-                    },
-                    err_fn,
-                    None,
-                )?,
-                cpal::SampleFormat::I8 => device.build_input_stream(
-                    &stream_config,
-                    move |data: &[i8], _: &cpal::InputCallbackInfo| {
-                        let f32_data: Vec<f32> =
-                            data.iter().map(|&s| s as f32 / 128.0).collect();
-                        handle_audio_input(
-                            &f32_data,
-                            channels,
-                            &buffer,
-                            &is_paused,
-                            &last_level_time,
-                            &dc_state,
-                            stream_start_time,
-                            &level_tx,
-                        );
-                    },
-                    err_fn,
-                    None,
-                )?,
-                cpal::SampleFormat::U8 => device.build_input_stream(
-                    &stream_config,
-                    move |data: &[u8], _: &cpal::InputCallbackInfo| {
-                        let f32_data: Vec<f32> = data
-                            .iter()
-                            .map(|&s| (s as f32 - 128.0) / 128.0)
-                            .collect();
-                        handle_audio_input(
-                            &f32_data,
-                            channels,
-                            &buffer,
-                            &is_paused,
-                            &last_level_time,
-                            &dc_state,
-                            stream_start_time,
-                            &level_tx,
-                        );
-                    },
-                    err_fn,
-                    None,
-                )?,
-                cpal::SampleFormat::F64 => device.build_input_stream(
-                    &stream_config,
-                    move |data: &[f64], _: &cpal::InputCallbackInfo| {
-                        let f32_data: Vec<f32> = data.iter().map(|&s| s as f32).collect();
-                        handle_audio_input(
-                            &f32_data,
-                            channels,
-                            &buffer,
-                            &is_paused,
-                            &last_level_time,
-                            &dc_state,
-                            stream_start_time,
-                            &level_tx,
-                        );
-                    },
-                    err_fn,
-                    None,
-                )?,
-                _ => {
-                    return Err(AudioError::StreamBuildError(
-                        "Unsupported audio sample format".to_string(),
-                    ));
-                }
-            };
-
-            stream.play()?;
-            Ok((stream, native_rate))
+            Err(last_err)
         };
 
         let host = cpal::default_host();
-        let candidates = collect_candidate_devices(&host);
-        if candidates.is_empty() {
-            return Err(AudioError::DefaultDeviceNotFound);
-        }
-
-        let mut last_err = AudioError::DefaultDeviceNotFound;
-        let mut opened: Option<(cpal::Stream, u32)> = None;
-
-        for dev in &candidates {
-            match try_open_on_device(dev) {
-                Ok(res) => {
-                    opened = Some(res);
-                    break;
-                }
-                Err(e) => {
-                    last_err = e;
-                }
-            }
-        }
+        let mut opened = attempt_open_sequence(&host);
 
         // If a specific PULSE_SOURCE failed to open (e.g. unplugged or rejected stream),
-        // automatically clear PULSE_SOURCE so PulseAudio/PipeWire uses @DEFAULT_SOURCE@ and retry.
-        if opened.is_none() && pulse_source_was_set {
+        // automatically clear PULSE_SOURCE / PIPEWIRE_NODE so PulseAudio/PipeWire uses @DEFAULT_SOURCE@ and retry.
+        if opened.is_err() && pulse_source_was_set {
             unsafe {
                 std::env::remove_var("PULSE_SOURCE");
+                std::env::remove_var("PIPEWIRE_NODE");
             }
-            for dev in &candidates {
-                if let Ok(res) = try_open_on_device(dev) {
-                    opened = Some(res);
-                    break;
-                }
-            }
+            opened = attempt_open_sequence(&host);
         }
 
-        let (stream, native_rate) = match opened {
-            Some(res) => res,
-            None => return Err(last_err),
-        };
+        let (stream, native_rate) = opened?;
 
         self.sample_rate.store(native_rate, Ordering::SeqCst);
         self.stream = Some(stream);
@@ -1232,7 +1451,19 @@ impl AudioRecorder {
             buffer: Arc::clone(&self.buffer),
             sample_rate: Arc::clone(&self.sample_rate),
             is_paused: Arc::clone(&self.is_paused),
+            stream_error: Arc::clone(&self.stream_error),
         }
+    }
+
+    /// Atomically checks and clears any hardware stream disconnection/error flag.
+    pub fn take_stream_error(&self) -> bool {
+        self.stream_error.swap(false, Ordering::SeqCst)
+    }
+
+    /// Simulates a hardware stream disconnection/error for testing recovery behavior.
+    pub fn simulate_stream_error(&self) {
+        self.stream_error.store(true, Ordering::SeqCst);
+        self.is_recording.store(false, Ordering::SeqCst);
     }
 
     /// Pause audio recording without destroying the stream. Discards samples and emits zeros.
@@ -1306,6 +1537,7 @@ impl Default for AudioRecorder {
             device_name: None,
             is_recording: Arc::new(AtomicBool::new(false)),
             is_paused: Arc::new(AtomicBool::new(false)),
+            stream_error: Arc::new(AtomicBool::new(false)),
             stream: None,
             buffer: Arc::new(Mutex::new(Vec::new())),
             sample_rate: Arc::new(AtomicU32::new(16000)),
@@ -1320,7 +1552,7 @@ fn handle_audio_input(
     buffer: &Arc<Mutex<Vec<f32>>>,
     is_paused: &Arc<AtomicBool>,
     last_level_time: &Arc<Mutex<Instant>>,
-    dc_state: &Arc<Mutex<(f32, f32)>>,
+    dc_state: &Arc<Mutex<Option<(f32, f32)>>>,
     start_time: Instant,
     level_tx: &tokio::sync::mpsc::Sender<[f32; 5]>,
 ) {
@@ -1345,8 +1577,9 @@ fn handle_audio_input(
     }
 
     // Downmix to mono if multi-channel and apply 1st-order DC-blocking high-pass filter
-    // (`y[n] = x[n] - x[n-1] + 0.995 * y[n-1]`) so hardware ADC DC offsets are eliminated.
-    let (mut prev_x, mut prev_y) = dc_state.lock().map(|g| *g).unwrap_or((0.0, 0.0));
+    // (`y[n] = x[n] - x[n-1] + 0.995 * y[n-1]`) initialized to the first sample `x[0]`
+    // so static hardware ADC DC offsets never inject a step spike at sample 0.
+    let mut state_opt = dc_state.lock().ok().and_then(|g| *g);
     let mono_samples: Vec<f32> = if channels > 1 {
         let frame_count = data.len() / channels;
         let mut mono = Vec::with_capacity(frame_count);
@@ -1356,24 +1589,24 @@ fn handle_audio_input(
                 sum += data[frame * channels + ch];
             }
             let x = sum / channels as f32;
+            let (prev_x, prev_y) = state_opt.unwrap_or((x, 0.0));
             let y = (x - prev_x + 0.995 * prev_y).clamp(-1.0, 1.0);
-            prev_x = x;
-            prev_y = y;
+            state_opt = Some((x, y));
             mono.push(y);
         }
         mono
     } else {
         let mut mono = Vec::with_capacity(data.len());
         for &x in data {
+            let (prev_x, prev_y) = state_opt.unwrap_or((x, 0.0));
             let y = (x - prev_x + 0.995 * prev_y).clamp(-1.0, 1.0);
-            prev_x = x;
-            prev_y = y;
+            state_opt = Some((x, y));
             mono.push(y);
         }
         mono
     };
     if let Ok(mut g) = dc_state.lock() {
-        *g = (prev_x, prev_y);
+        *g = state_opt;
     }
 
     if let Ok(mut buf) = buffer.lock() {

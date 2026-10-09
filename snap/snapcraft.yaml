@@ -37,7 +37,8 @@ apps:
     environment:
       ALSA_PLUGIN_DIR: $SNAP/usr/lib/x86_64-linux-gnu/alsa-lib
       ALSA_CONFIG_DIR: $SNAP/usr/share/alsa
-      ALSA_CONFIG_PATH: $SNAP/usr/share/alsa/alsa.conf:$SNAP/usr/share/alsa/alsa.conf.d/50-pulseaudio.conf:$SNAP/etc/asound.conf
+      ALSA_CONFIG_PATH: $SNAP/usr/share/alsa/alsa.conf
+      LD_LIBRARY_PATH: $SNAP/usr/lib/x86_64-linux-gnu/pulseaudio:$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/pulseaudio
 
 layout:
   /usr/share/alsa:
@@ -87,7 +88,20 @@ parts:
           type pulse
           fallback "sysdefault"
       }
+      pcm.pulse {
+          type pulse
+          hint {
+              show on
+              description "PulseAudio/PipeWire Sound Server"
+          }
+      }
+      ctl.pulse {
+          type pulse
+      }
       EOF
+      if [ -f $CRAFT_PART_INSTALL/usr/share/alsa/alsa.conf ]; then
+        cat $CRAFT_PART_INSTALL/etc/asound.conf >> $CRAFT_PART_INSTALL/usr/share/alsa/alsa.conf
+      fi
       install -Dm644 LICENSE $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE
       install -Dm644 data/io.github.opendictate.OpenDictate.desktop $CRAFT_PART_INSTALL/usr/share/applications/io.github.opendictate.OpenDictate.desktop
       install -Dm644 data/io.github.opendictate.OpenDictate.metainfo.xml $CRAFT_PART_INSTALL/usr/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml

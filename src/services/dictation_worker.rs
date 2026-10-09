@@ -5,12 +5,13 @@ use crate::config::Config;
 use crate::services::ai::AiManager;
 use crate::services::storage::StorageService;
 use relm4::Worker;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 use tokio::runtime::{Handle, Runtime};
 
 static TOKIO_RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static GLOBAL_SESSION_GATE: OnceLock<SessionCommitGate> = OnceLock::new();
 
 /// Returns a reference to the global background Tokio runtime handle.
 pub fn tokio_handle() -> &'static Handle {
@@ -23,6 +24,84 @@ pub fn tokio_handle() -> &'static Handle {
                 .expect("Failed to initialize background Tokio runtime")
         })
         .handle()
+}
+
+/// Returns the shared process-wide `SessionCommitGate` used to coordinate cancellation
+/// and session validity between `DictationWorker` and the UI thread.
+pub fn global_session_gate() -> &'static SessionCommitGate {
+    GLOBAL_SESSION_GATE.get_or_init(SessionCommitGate::new)
+}
+
+/// Explicit lifecycle state of the dictation worker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RecordingLifecycleState {
+    #[default]
+    Idle,
+    Recording,
+    Paused,
+    Processing,
+}
+
+/// Monotonic session commit gate ensuring stale asynchronous transcription or enhancement
+/// results can never overwrite clipboard, SQLite history, or UI state after cancellation
+/// or after a newer dictation session starts.
+#[derive(Debug, Clone)]
+pub struct SessionCommitGate {
+    active_session_id: Arc<AtomicU64>,
+    output_session_id: Arc<AtomicU64>,
+}
+
+impl Default for SessionCommitGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SessionCommitGate {
+    /// Creates a new `SessionCommitGate` starting at session `0`.
+    pub fn new() -> Self {
+        Self {
+            active_session_id: Arc::new(AtomicU64::new(0)),
+            output_session_id: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// Advances to a new monotonic session ID, invalidating all in-flight work from prior sessions.
+    pub fn advance(&self) -> u64 {
+        self.active_session_id.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    /// Returns the currently active session ID.
+    pub fn active_session_id(&self) -> u64 {
+        self.active_session_id.load(Ordering::SeqCst)
+    }
+
+    /// Returns the session ID attached to the most recently emitted asynchronous output.
+    pub fn last_output_session_id(&self) -> u64 {
+        self.output_session_id.load(Ordering::SeqCst)
+    }
+
+    /// Checks whether `session_id` is still the active session without modifying output tags.
+    pub fn is_valid_commit(&self, session_id: u64) -> bool {
+        session_id != 0 && self.active_session_id.load(Ordering::SeqCst) == session_id
+    }
+
+    /// Validates that `session_id` is still active at the final worker commit point and tags the output.
+    pub fn validate_and_tag(&self, session_id: u64) -> bool {
+        if self.is_valid_commit(session_id) {
+            self.output_session_id.store(session_id, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Final UI commit-point check verifying that the most recently tagged output still matches
+    /// the currently active session (and was not invalidated while in flight across the channel).
+    pub fn is_last_output_valid(&self) -> bool {
+        let out_id = self.output_session_id.load(Ordering::SeqCst);
+        out_id != 0 && self.active_session_id.load(Ordering::SeqCst) == out_id
+    }
 }
 
 /// Messages sent to the DictationWorker to control recording and pipeline processing.
@@ -67,21 +146,24 @@ pub struct DictationWorker {
     ai_manager: AiManager,
     storage: StorageService,
     config: Config,
-    is_recording: bool,
-    is_paused: bool,
+    state: Arc<Mutex<RecordingLifecycleState>>,
+    session_gate: SessionCommitGate,
     start_time: Option<Instant>,
     active_tone: String,
     level_task: Option<tokio::task::AbortHandle>,
     stream_task: Option<tokio::task::AbortHandle>,
+    processing_task: Option<tokio::task::AbortHandle>,
     level_active: Option<Arc<AtomicBool>>,
-    last_partial: Arc<std::sync::Mutex<Option<(String, String)>>>,
+    last_partial: Arc<Mutex<Option<(String, String)>>>,
 }
 
 impl std::fmt::Debug for DictationWorker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DictationWorker")
-            .field("is_recording", &self.is_recording)
-            .field("is_paused", &self.is_paused)
+            .field("lifecycle_state", &self.lifecycle_state())
+            .field("is_recording", &self.is_recording())
+            .field("is_paused", &self.is_paused())
+            .field("active_session_id", &self.active_session_id())
             .field("active_tone", &self.active_tone)
             .field("config", &self.config)
             .finish()
@@ -99,25 +181,57 @@ impl DictationWorker {
             ai_manager,
             storage,
             config,
-            is_recording: false,
-            is_paused: false,
+            state: Arc::new(Mutex::new(RecordingLifecycleState::Idle)),
+            session_gate: global_session_gate().clone(),
             start_time: None,
             active_tone: "Clean".to_string(),
             level_task: None,
             stream_task: None,
+            processing_task: None,
             level_active: None,
-            last_partial: Arc::new(std::sync::Mutex::new(None)),
+            last_partial: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// Returns true if currently recording.
+    /// Returns the explicit lifecycle state (`Idle`, `Recording`, `Paused`, `Processing`).
+    pub fn lifecycle_state(&self) -> RecordingLifecycleState {
+        self.state
+            .lock()
+            .map(|g| *g)
+            .unwrap_or(RecordingLifecycleState::Idle)
+    }
+
+    /// Returns true if currently recording (active or paused).
     pub fn is_recording(&self) -> bool {
-        self.is_recording
+        matches!(
+            self.lifecycle_state(),
+            RecordingLifecycleState::Recording | RecordingLifecycleState::Paused
+        )
     }
 
     /// Returns true if recording is paused.
     pub fn is_paused(&self) -> bool {
-        self.is_paused
+        self.lifecycle_state() == RecordingLifecycleState::Paused
+    }
+
+    /// Returns true if transcription/enhancement processing is currently in flight.
+    pub fn is_processing(&self) -> bool {
+        self.lifecycle_state() == RecordingLifecycleState::Processing
+    }
+
+    /// Returns the current monotonic session ID.
+    pub fn active_session_id(&self) -> u64 {
+        self.session_gate.active_session_id()
+    }
+
+    /// Returns a reference to the worker's `SessionCommitGate`.
+    pub fn session_gate(&self) -> &SessionCommitGate {
+        &self.session_gate
+    }
+
+    /// Returns a reference to the underlying `AudioRecorder`.
+    pub fn recorder(&self) -> &AudioRecorder {
+        &self.recorder
     }
 
     /// Returns the currently active enhancement tone.
@@ -128,6 +242,12 @@ impl DictationWorker {
     /// Returns the current configuration.
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    fn set_lifecycle_state(&self, new_state: RecordingLifecycleState) {
+        if let Ok(mut g) = self.state.lock() {
+            *g = new_state;
+        }
     }
 }
 
@@ -143,7 +263,7 @@ impl Worker for DictationWorker {
     fn update(&mut self, msg: Self::Input, sender: relm4::ComponentSender<Self>) {
         match msg {
             DictationWorkerInput::UpdateConfig(cfg) => {
-                if self.is_recording {
+                if self.lifecycle_state() != RecordingLifecycleState::Idle {
                     return;
                 }
                 self.ai_manager = AiManager::from_config(&cfg);
@@ -155,13 +275,16 @@ impl Worker for DictationWorker {
                 self.config = cfg;
             }
             DictationWorkerInput::StartRecording => {
-                if self.is_recording {
+                if self.lifecycle_state() != RecordingLifecycleState::Idle {
                     return;
                 }
                 if let Ok(mut guard) = self.last_partial.lock() {
                     *guard = None;
                 }
                 if let Some(handle) = self.stream_task.take() {
+                    handle.abort();
+                }
+                if let Some(handle) = self.processing_task.take() {
                     handle.abort();
                 }
 
@@ -177,8 +300,9 @@ impl Worker for DictationWorker {
                     )));
                     return;
                 }
-                self.is_recording = true;
-                self.is_paused = false;
+
+                let task_session_id = self.session_gate.advance();
+                self.set_lifecycle_state(RecordingLifecycleState::Recording);
                 self.start_time = Some(Instant::now());
                 let _ = sender.output(DictationWorkerOutput::RecordingStarted);
                 let _ = sender.output(DictationWorkerOutput::StatusMessage(
@@ -190,9 +314,12 @@ impl Worker for DictationWorker {
 
                 let sender_levels = sender.clone();
                 let level_active_clone = level_active.clone();
+                let gate_levels = self.session_gate.clone();
                 let task = tokio_handle().spawn(async move {
                     while let Some(levels) = level_rx.recv().await {
-                        if level_active_clone.load(Ordering::SeqCst) {
+                        if level_active_clone.load(Ordering::SeqCst)
+                            && gate_levels.is_valid_commit(task_session_id)
+                        {
                             let avg = levels.iter().sum::<f32>() / levels.len() as f32;
                             let _ = sender_levels.output(DictationWorkerOutput::AudioLevel(avg));
                         }
@@ -208,6 +335,8 @@ impl Worker for DictationWorker {
                 let stream_tone = self.active_tone.clone();
                 let is_local_ai = self.config.ai_mode.eq_ignore_ascii_case("local");
                 let last_partial_stream = self.last_partial.clone();
+                let gate_stream = self.session_gate.clone();
+                let state_stream = self.state.clone();
 
                 let stream_job = tokio_handle().spawn(async move {
                     let poll_ms = if is_local_ai { 450 } else { 1500 };
@@ -215,6 +344,23 @@ impl Worker for DictationWorker {
 
                     loop {
                         tokio::time::sleep(std::time::Duration::from_millis(poll_ms)).await;
+                        if !gate_stream.is_valid_commit(task_session_id) {
+                            break;
+                        }
+                        if snapshot_handle.take_stream_error() {
+                            if gate_stream.validate_and_tag(task_session_id) {
+                                stream_active.store(false, Ordering::SeqCst);
+                                if let Ok(mut g) = state_stream.lock() {
+                                    *g = RecordingLifecycleState::Idle;
+                                }
+                                let _ =
+                                    sender_stream.output(DictationWorkerOutput::AudioLevel(0.0));
+                                let _ = sender_stream.output(DictationWorkerOutput::Error(
+                                    "Microphone disconnected or audio stream error".to_string(),
+                                ));
+                            }
+                            break;
+                        }
                         if !stream_active.load(Ordering::SeqCst) {
                             continue;
                         }
@@ -231,7 +377,10 @@ impl Worker for DictationWorker {
 
                         if let Ok(raw_text) = ai_stream.transcribe(&wav_bytes).await {
                             let raw_trimmed = raw_text.trim().to_string();
-                            if !raw_trimmed.is_empty() && stream_active.load(Ordering::SeqCst) {
+                            if !raw_trimmed.is_empty()
+                                && stream_active.load(Ordering::SeqCst)
+                                && gate_stream.validate_and_tag(task_session_id)
+                            {
                                 let enhanced_text = if stream_tone.eq_ignore_ascii_case("Raw") {
                                     raw_trimmed.clone()
                                 } else {
@@ -246,7 +395,7 @@ impl Worker for DictationWorker {
                                 let _ = sender_stream.output(
                                     DictationWorkerOutput::PartialTranscript {
                                         raw_text: raw_trimmed,
-                                    enhanced_text,
+                                        enhanced_text,
                                     },
                                 );
                             }
@@ -256,11 +405,11 @@ impl Worker for DictationWorker {
                 self.stream_task = Some(stream_job.abort_handle());
             }
             DictationWorkerInput::PauseRecording => {
-                if !self.is_recording || self.is_paused {
+                if self.lifecycle_state() != RecordingLifecycleState::Recording {
                     return;
                 }
                 self.recorder.pause();
-                self.is_paused = true;
+                self.set_lifecycle_state(RecordingLifecycleState::Paused);
                 if let Some(ref active) = self.level_active {
                     active.store(false, Ordering::SeqCst);
                 }
@@ -271,11 +420,11 @@ impl Worker for DictationWorker {
                 ));
             }
             DictationWorkerInput::ResumeRecording => {
-                if !self.is_recording || !self.is_paused {
+                if self.lifecycle_state() != RecordingLifecycleState::Paused {
                     return;
                 }
                 self.recorder.resume();
-                self.is_paused = false;
+                self.set_lifecycle_state(RecordingLifecycleState::Recording);
                 if let Some(ref active) = self.level_active {
                     active.store(true, Ordering::SeqCst);
                 }
@@ -285,9 +434,11 @@ impl Worker for DictationWorker {
                 ));
             }
             DictationWorkerInput::CancelRecording => {
+                // Advance session_gate immediately so any in-flight blocking Whisper inference
+                // or cloud HTTP request cannot commit results after cancellation.
+                self.session_gate.advance();
                 let _ = self.recorder.stop();
-                self.is_recording = false;
-                self.is_paused = false;
+                self.set_lifecycle_state(RecordingLifecycleState::Idle);
                 self.start_time = None;
                 if let Some(active) = self.level_active.take() {
                     active.store(false, Ordering::SeqCst);
@@ -296,6 +447,9 @@ impl Worker for DictationWorker {
                     handle.abort();
                 }
                 if let Some(handle) = self.stream_task.take() {
+                    handle.abort();
+                }
+                if let Some(handle) = self.processing_task.take() {
                     handle.abort();
                 }
                 if let Ok(mut guard) = self.last_partial.lock() {
@@ -309,18 +463,29 @@ impl Worker for DictationWorker {
             }
             DictationWorkerInput::ToggleRecording { tone } => {
                 self.active_tone = tone.clone();
-                if self.is_recording {
-                    self.update(DictationWorkerInput::StopAndProcess { tone }, sender);
-                } else {
-                    self.update(DictationWorkerInput::StartRecording, sender);
+                match self.lifecycle_state() {
+                    RecordingLifecycleState::Idle => {
+                        self.update(DictationWorkerInput::StartRecording, sender);
+                    }
+                    RecordingLifecycleState::Recording | RecordingLifecycleState::Paused => {
+                        self.update(DictationWorkerInput::StopAndProcess { tone }, sender);
+                    }
+                    RecordingLifecycleState::Processing => {
+                        // Ignore duplicate ToggleRecording while already processing a recording
+                    }
                 }
             }
             DictationWorkerInput::StopAndProcess { tone } => {
-                if !self.is_recording {
+                if !matches!(
+                    self.lifecycle_state(),
+                    RecordingLifecycleState::Recording | RecordingLifecycleState::Paused
+                ) {
                     return;
                 }
-                self.is_recording = false;
-                self.is_paused = false;
+                self.set_lifecycle_state(RecordingLifecycleState::Processing);
+                let task_session_id = self.session_gate.active_session_id();
+                let had_stream_error = self.recorder.take_stream_error();
+
                 let duration = self
                     .start_time
                     .map(|t| t.elapsed().as_secs_f64())
@@ -335,15 +500,15 @@ impl Worker for DictationWorker {
                 if let Some(handle) = self.stream_task.take() {
                     handle.abort();
                 }
-                let cached_partial = self
-                    .last_partial
-                    .lock()
-                    .ok()
-                    .and_then(|mut g| g.take());
+                if let Some(handle) = self.processing_task.take() {
+                    handle.abort();
+                }
+                let cached_partial = self.last_partial.lock().ok().and_then(|mut g| g.take());
 
                 let wav_bytes = match self.recorder.stop() {
                     Ok(bytes) => bytes,
                     Err(e) => {
+                        self.set_lifecycle_state(RecordingLifecycleState::Idle);
                         crate::services::crash_reporter::CrashReporter::record_event(
                             "AudioCapture",
                             &format!("Audio stop error: {}", e),
@@ -367,18 +532,29 @@ impl Worker for DictationWorker {
                     if let Some((partial_raw, partial_enhanced)) = cached_partial
                         && !partial_raw.trim().is_empty()
                     {
-                        let _ = self.storage.insert_dictation(
-                            &partial_raw,
-                            &partial_enhanced,
-                            &tone,
-                            "dictation",
-                            duration,
-                        );
-                        let _ = sender.output(DictationWorkerOutput::Success {
-                            raw_text: partial_raw,
-                            enhanced_text: partial_enhanced,
-                            duration_seconds: duration,
-                        });
+                        if self.session_gate.validate_and_tag(task_session_id) {
+                            self.set_lifecycle_state(RecordingLifecycleState::Idle);
+                            let _ = self.storage.insert_dictation(
+                                &partial_raw,
+                                &partial_enhanced,
+                                &tone,
+                                "dictation",
+                                duration,
+                            );
+                            let _ = sender.output(DictationWorkerOutput::Success {
+                                raw_text: partial_raw,
+                                enhanced_text: partial_enhanced,
+                                duration_seconds: duration,
+                            });
+                        }
+                        return;
+                    }
+                    self.set_lifecycle_state(RecordingLifecycleState::Idle);
+                    if had_stream_error {
+                        let _ = sender.output(DictationWorkerOutput::AudioLevel(0.0));
+                        let _ = sender.output(DictationWorkerOutput::Error(
+                            "Microphone disconnected or audio stream error".to_string(),
+                        ));
                         return;
                     }
                     crate::services::crash_reporter::CrashReporter::record_event(
@@ -401,9 +577,15 @@ impl Worker for DictationWorker {
                 let ai = self.ai_manager.clone();
                 let storage = self.storage.clone();
                 let sender_clone = sender.clone();
+                let gate_proc = self.session_gate.clone();
+                let state_proc = self.state.clone();
 
-                tokio_handle().spawn(async move {
+                let proc_job = tokio_handle().spawn(async move {
                     let raw_result = ai.transcribe(&wav_bytes).await;
+                    if !gate_proc.is_valid_commit(task_session_id) {
+                        return;
+                    }
+
                     let raw_trimmed = match raw_result {
                         Ok(raw_text) if !raw_text.trim().is_empty() => raw_text.trim().to_string(),
                         Ok(_) => {
@@ -412,16 +594,23 @@ impl Worker for DictationWorker {
                             {
                                 partial_raw.trim().to_string()
                             } else {
-                                crate::services::crash_reporter::CrashReporter::record_event(
-                                    "AIEngine",
-                                    "Transcription returned empty text",
-                                );
-                                let _ = sender_clone.output(DictationWorkerOutput::AudioLevel(0.0));
-                                let _ = sender_clone.output(DictationWorkerOutput::StatusMessage(
-                                    "No speech detected".to_string(),
-                                ));
-                                let _ =
-                                    sender_clone.output(DictationWorkerOutput::NoSpeechDetected);
+                                if gate_proc.validate_and_tag(task_session_id) {
+                                    if let Ok(mut g) = state_proc.lock() {
+                                        *g = RecordingLifecycleState::Idle;
+                                    }
+                                    crate::services::crash_reporter::CrashReporter::record_event(
+                                        "AIEngine",
+                                        "Transcription returned empty text",
+                                    );
+                                    let _ =
+                                        sender_clone.output(DictationWorkerOutput::AudioLevel(0.0));
+                                    let _ =
+                                        sender_clone.output(DictationWorkerOutput::StatusMessage(
+                                            "No speech detected".to_string(),
+                                        ));
+                                    let _ = sender_clone
+                                        .output(DictationWorkerOutput::NoSpeechDetected);
+                                }
                                 return;
                             }
                         }
@@ -431,29 +620,52 @@ impl Worker for DictationWorker {
                             {
                                 partial_raw.trim().to_string()
                             } else {
-                                crate::services::crash_reporter::CrashReporter::record_event(
-                                    "AIEngine",
-                                    &format!("Transcription failed: {}", e),
-                                );
-                                let _ = sender_clone.output(DictationWorkerOutput::Error(
-                                    format!("AI error: {}", e),
-                                ));
+                                if gate_proc.validate_and_tag(task_session_id) {
+                                    if let Ok(mut g) = state_proc.lock() {
+                                        *g = RecordingLifecycleState::Idle;
+                                    }
+                                    crate::services::crash_reporter::CrashReporter::record_event(
+                                        "AIEngine",
+                                        &format!("Transcription failed: {}", e),
+                                    );
+                                    let _ = sender_clone.output(DictationWorkerOutput::Error(
+                                        format!("AI error: {}", e),
+                                    ));
+                                }
                                 return;
                             }
                         }
                     };
 
+                    if !gate_proc.is_valid_commit(task_session_id) {
+                        return;
+                    }
+
                     let enhanced_text = if tone.eq_ignore_ascii_case("Raw") {
                         raw_trimmed.clone()
                     } else {
-                        ai.enhance(&raw_trimmed, &tone).await.unwrap_or_else(|e| {
-                            crate::services::crash_reporter::CrashReporter::record_event(
-                                "AIEngine",
-                                &format!("Enhancement fallback due to error: {}", e),
-                            );
-                            raw_trimmed.clone()
-                        })
+                        match ai.enhance(&raw_trimmed, &tone).await {
+                            Ok(s) if !s.trim().is_empty() => s,
+                            Ok(_) => raw_trimmed.clone(),
+                            Err(e) => {
+                                crate::services::crash_reporter::CrashReporter::record_event(
+                                    "AIEngine",
+                                    &format!("Enhancement fallback due to error: {}", e),
+                                );
+                                raw_trimmed.clone()
+                            }
+                        }
                     };
+
+                    // Final commit gate: verify session was not cancelled or superseded by a newer session
+                    // before writing to SQLite history or emitting Success to UI/clipboard.
+                    if !gate_proc.validate_and_tag(task_session_id) {
+                        return;
+                    }
+
+                    if let Ok(mut g) = state_proc.lock() {
+                        *g = RecordingLifecycleState::Idle;
+                    }
 
                     let _ = storage.insert_dictation(
                         &raw_trimmed,
@@ -469,6 +681,7 @@ impl Worker for DictationWorker {
                         duration_seconds: duration,
                     });
                 });
+                self.processing_task = Some(proc_job.abort_handle());
             }
         }
     }

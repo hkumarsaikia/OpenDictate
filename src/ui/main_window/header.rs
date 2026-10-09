@@ -227,6 +227,7 @@ pub fn build_header_bar(
         .sensitive(initial_scale > 70)
         .css_classes(vec!["flat".to_string(), "circular".to_string()])
         .build();
+    zoom_out_button.update_property(&[gtk4::accessible::Property::Label("Zoom Out")]);
 
     let zoom_label = gtk4::Label::builder()
         .label(format!("{}%", initial_scale))
@@ -240,6 +241,7 @@ pub fn build_header_bar(
         .css_classes(vec!["flat".to_string(), "numeric".to_string()])
         .child(&zoom_label)
         .build();
+    zoom_reset_button.update_property(&[gtk4::accessible::Property::Label("Reset Size")]);
 
     let zoom_in_button = gtk4::Button::builder()
         .icon_name("zoom-in-symbolic")
@@ -247,6 +249,7 @@ pub fn build_header_bar(
         .sensitive(initial_scale < 200)
         .css_classes(vec!["flat".to_string(), "circular".to_string()])
         .build();
+    zoom_in_button.update_property(&[gtk4::accessible::Property::Label("Zoom In")]);
 
     zoom_box.append(&zoom_out_button);
     zoom_box.append(&zoom_reset_button);
@@ -647,6 +650,10 @@ pub fn build_header_bar(
         .primary(true)
         .popover(&popover)
         .build();
+    main_menu_button.update_property(&[gtk4::accessible::Property::Label(tr(
+        "main_menu",
+        active_lang,
+    ))]);
 
     // Pack into end of HeaderBar
     header_bar.pack_end(&main_menu_button);

@@ -345,6 +345,7 @@ impl MainWindowWidgets {
             .set_title(Some(crate::services::i18n::tr("settings", lang)));
         self.header_widgets.retranslate(lang);
         self.settings_widgets.retranslate(lang);
+        self.minibar_widgets.retranslate(lang);
     }
 }
 
@@ -479,7 +480,7 @@ impl SimpleComponent for MainWindowModel {
                         .borrow_mut()
                         .set_recording(false);
                     mb_widgets_clone.pause_button.set_sensitive(false);
-                    mb_widgets_clone.cancel_button.set_sensitive(false);
+                    mb_widgets_clone.cancel_button.set_sensitive(true);
                     mb_widgets_clone.visualizer_area.set_visible(false);
                     mb_widgets_clone.spinner.set_visible(true);
                     mb_widgets_clone.spinner.set_spinning(true);
@@ -493,6 +494,13 @@ impl SimpleComponent for MainWindowModel {
                     enhanced_text,
                     ..
                 } => {
+                    // Final UI commit point: drop stale completion if session was cancelled or superseded
+                    if !crate::services::dictation_worker::global_session_gate()
+                        .is_last_output_valid()
+                    {
+                        return;
+                    }
+
                     mb_widgets_clone
                         .record_button
                         .set_icon_name("media-record-symbolic");
@@ -588,13 +596,18 @@ impl SimpleComponent for MainWindowModel {
                     raw_text,
                     enhanced_text,
                 } => {
+                    // Drop stale partial transcript if session was cancelled or superseded
+                    if !crate::services::dictation_worker::global_session_gate()
+                        .is_last_output_valid()
+                    {
+                        return;
+                    }
                     let display_text = if !enhanced_text.is_empty() {
                         &enhanced_text
                     } else {
                         &raw_text
                     };
                     mb_widgets_clone.drawer_widgets.set_text(display_text);
-                    crate::ui::mini_bar::copy_text_to_clipboard(display_text);
                     mb_widgets_clone.expand_drawer();
                 }
                 DictationWorkerOutput::RecordingStarted => {
@@ -690,6 +703,9 @@ impl SimpleComponent for MainWindowModel {
 
                     mb_widgets_clone.cancel_button.set_sensitive(false);
 
+                    mb_widgets_clone.spinner.set_spinning(false);
+                    mb_widgets_clone.spinner.set_visible(false);
+                    mb_widgets_clone.visualizer_area.set_visible(true);
                     mb_widgets_clone
                         .visualizer_state
                         .borrow_mut()
@@ -697,6 +713,7 @@ impl SimpleComponent for MainWindowModel {
                     mb_widgets_clone.visualizer_state.borrow_mut().reset_idle();
                     mb_widgets_clone.visualizer_area.queue_draw();
 
+                    mb_widgets_clone.drawer_widgets.clear();
                     mb_widgets_clone.drawer_widgets.set_status("Cancelled");
                     sender_for_worker
                         .input(MainWindowMsg::DictationStatus("Cancelled".to_string()));
@@ -809,6 +826,7 @@ impl SimpleComponent for MainWindowModel {
         // Connect cancel button to worker
         let worker_sender_cancel = worker.sender().clone();
         minibar_widgets.cancel_button.connect_clicked(move |_| {
+            crate::services::dictation_worker::global_session_gate().advance();
             let _ = worker_sender_cancel.send(DictationWorkerInput::CancelRecording);
         });
 

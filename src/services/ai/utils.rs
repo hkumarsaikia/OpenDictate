@@ -33,7 +33,7 @@ pub fn format_enhancement_prompt(text: &str, tone: &str) -> String {
             format!(
                 "You are converting someone's dictated speech into a message they would have typed themselves.\n\
                 Remove speech filler words (um, uh, like, you know, etc.), false starts, and speech recognition artifacts.\n\
-                Keep all original wording, tone, emotion, humor, and meaning intact. Do not translate.\n\
+                Keep all original wording, tone, emotion, humor, negation (not, never), proper names, numbers, and technical terms intact. Do not translate.\n\
                 Preserve all profanity verbatim.\n\
                 The output MUST ONLY be the cleaned text - no commentary.\n\n\
                 Input:\n{}\n\n\
@@ -46,7 +46,7 @@ pub fn format_enhancement_prompt(text: &str, tone: &str) -> String {
                 "You are refining dictated speech into a casual, relaxed, conversational message.\n\
                 Remove speech filler words and mechanical artifacts.\n\
                 Keep the tone casual, friendly, and natural, exactly as spoken. Do not formalize words.\n\
-                Preserve all information and profanity verbatim.\n\
+                Preserve all information, proper names, numbers, technical terms, negation, and profanity verbatim.\n\
                 The output MUST ONLY be the casual text - no commentary.\n\n\
                 Input:\n{}\n\n\
                 Casual output:",
@@ -58,7 +58,7 @@ pub fn format_enhancement_prompt(text: &str, tone: &str) -> String {
                 "You are formatting dictated speech into a well-structured, professional document or note.\n\
                 Fix grammar, punctuation, and remove speech filler words.\n\
                 Structure the text with clean paragraphs and section headings where appropriate for clarity.\n\
-                Preserve all original facts, decisions, details, and meaning.\n\
+                Preserve all original facts, decisions, proper names, numbers, code identifiers, negation, and meaning.\n\
                 The output MUST ONLY be the formatted professional text - no commentary.\n\n\
                 Input:\n{}\n\n\
                 Professional formatted output:",
@@ -69,7 +69,7 @@ pub fn format_enhancement_prompt(text: &str, tone: &str) -> String {
             format!(
                 "Convert the following dictated text into clear, well-organized bullet points.\n\
                 Extract distinct points and key ideas using dashes (-).\n\
-                Maintain logical ordering and preserve all essential information and details.\n\
+                Maintain logical ordering and preserve all essential information, proper names, numbers, technical terms, and details.\n\
                 The output MUST ONLY be the bullet points - no preamble or commentary.\n\n\
                 Input:\n{}\n\n\
                 Bullet points output:",
@@ -79,7 +79,7 @@ pub fn format_enhancement_prompt(text: &str, tone: &str) -> String {
         "concise" | "short" | "brief" => {
             format!(
                 "You are refining dictated speech into a concise, direct message.\n\
-                Remove speech filler words, repetition, and extraneous phrasing while keeping all core facts and meaning.\n\
+                Remove speech filler words, repetition, and extraneous phrasing while keeping all core facts, proper names, numbers, technical identifiers, negation, and meaning.\n\
                 The output MUST ONLY be the concise text - do NOT generate code, explanations, notes, or commentary.\n\n\
                 Input:\n{}\n\n\
                 Concise output:",
@@ -88,7 +88,7 @@ pub fn format_enhancement_prompt(text: &str, tone: &str) -> String {
         }
         _ => {
             format!(
-                "Clean up and format the following dictated speech, removing filler words and fixing punctuation.\n\
+                "Clean up and format the following dictated speech, removing filler words and fixing punctuation while preserving all names, numbers, technical terms, and negation.\n\
                 The output MUST ONLY be the cleaned text - do NOT generate code, explanations, notes, or commentary.\n\n\
                 Input:\n{}\n\n\
                 Output:",
@@ -101,7 +101,8 @@ pub fn format_enhancement_prompt(text: &str, tone: &str) -> String {
 /// Applies rule-based local formatting and cleanup for speech transcripts offline.
 ///
 /// Removes filler words (um, uh, er, ah, you know), normalizes whitespace,
-/// fixes capitalization at sentence starts, and ensures trailing punctuation.
+/// fixes capitalization at sentence starts (without corrupting mid-token dots
+/// like `Cargo.toml` or `v2.0.0`), and ensures trailing punctuation.
 pub fn apply_smart_local_formatting(text: &str, tone: &str) -> String {
     if tone.eq_ignore_ascii_case("raw") {
         return text.to_string();
@@ -154,25 +155,39 @@ pub fn apply_smart_local_formatting(text: &str, tone: &str) -> String {
         return String::new();
     }
 
-    // Capitalize sentence starts
+    // Capitalize sentence starts only at start-of-text or after whitespace following sentence punctuation
     let mut capitalized = String::with_capacity(trimmed.len());
     let mut capitalize_next = true;
+    let mut prev_was_space_or_start = true;
 
     for ch in trimmed.chars() {
-        if capitalize_next && ch.is_alphabetic() {
-            capitalized.extend(ch.to_uppercase());
+        if ch.is_alphabetic() {
+            if capitalize_next && prev_was_space_or_start {
+                capitalized.extend(ch.to_uppercase());
+            } else {
+                capitalized.push(ch);
+            }
             capitalize_next = false;
+            prev_was_space_or_start = false;
         } else {
             capitalized.push(ch);
             if ch == '.' || ch == '!' || ch == '?' {
                 capitalize_next = true;
+                prev_was_space_or_start = false;
+            } else if ch.is_whitespace() {
+                prev_was_space_or_start = true;
+            } else {
+                prev_was_space_or_start = false;
+                if ch.is_numeric() {
+                    capitalize_next = false;
+                }
             }
         }
     }
 
-    // Ensure sentence ends with punctuation ('.', '!', or '?')
+    // Ensure sentence ends with punctuation ('.', '!', '?', ':', or ';')
     let mut final_text = capitalized.trim().to_string();
-    if !final_text.is_empty() && !final_text.ends_with(['.', '!', '?']) {
+    if !final_text.is_empty() && !final_text.ends_with(['.', '!', '?', ':', ';']) {
         final_text.push('.');
     }
 
@@ -225,6 +240,77 @@ fn remove_filler_word(text: &str, filler: &str) -> String {
     result
 }
 
+/// Redacts sensitive API keys, URL query `?key=` values, and common provider token prefixes
+/// from error messages and log strings so secrets are never leaked.
+pub fn redact_secrets(message: &str, api_key: &str) -> String {
+    let mut out = message.to_string();
+    let trimmed_key = api_key.trim();
+    if trimmed_key.len() >= 4 {
+        out = out.replace(trimmed_key, "[REDACTED_API_KEY]");
+    }
+
+    // Redact ?key=... or &key=... query parameters
+    for marker in ["?key=", "&key="] {
+        while let Some(pos) = out.find(marker) {
+            let val_start = pos + marker.len();
+            let rest = &out[val_start..];
+            if rest.starts_with("[REDACTED_API_KEY]") {
+                break;
+            }
+            let val_len = rest
+                .find(|c: char| c.is_whitespace() || matches!(c, '&' | '"' | '\'' | ')' | '>'))
+                .unwrap_or(rest.len());
+            if val_len == 0 {
+                break;
+            }
+            out.replace_range(val_start..val_start + val_len, "[REDACTED_API_KEY]");
+        }
+    }
+
+    // Redact known token prefixes (sk-, gsk_, AIza, xai-, hf_)
+    for prefix in ["sk-", "gsk_", "AIza", "xai-", "hf_"] {
+        let mut search_from = 0;
+        while let Some(rel_pos) = out[search_from..].find(prefix) {
+            let start = search_from + rel_pos;
+            let rest = &out[start..];
+            let token_len = rest
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-')
+                .unwrap_or(rest.len());
+            if token_len >= prefix.len() + 6 {
+                out.replace_range(start..start + token_len, "[REDACTED_API_KEY]");
+                search_from = start + "[REDACTED_API_KEY]".len();
+            } else {
+                search_from = start + prefix.len();
+            }
+        }
+    }
+
+    out
+}
+
+/// Returns `true` if the error message represents a transient HTTP or network error
+/// eligible for a bounded single retry (`429`, `502`, `503`, `504`, or timeout).
+pub fn is_transient_ai_error(err_msg: &str) -> bool {
+    let lower = err_msg.to_lowercase();
+    if lower.contains("401")
+        || lower.contains("403")
+        || lower.contains("400")
+        || lower.contains("404")
+        || lower.contains("missing api key")
+        || lower.contains("unsupported")
+    {
+        return false;
+    }
+    lower.contains("429")
+        || lower.contains("502")
+        || lower.contains("503")
+        || lower.contains("504")
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("too many requests")
+        || lower.contains("rate limit")
+}
+
 /// Standard HTTP client configured with sensible timeouts for AI provider network requests.
 pub fn default_http_client() -> reqwest::Client {
     reqwest::Client::builder()
@@ -257,5 +343,32 @@ mod tests {
 
         let raw_passthrough = apply_smart_local_formatting(raw, "Raw");
         assert_eq!(raw_passthrough, raw);
+    }
+
+    #[test]
+    fn test_apply_smart_local_formatting_preserves_technical_tokens_and_negation() {
+        let input = "um we updated Cargo.toml and v2.0.0 in src/main.rs. do not delete it";
+        let formatted = apply_smart_local_formatting(input, "Clean");
+        assert_eq!(
+            formatted,
+            "We updated Cargo.toml and v2.0.0 in src/main.rs. Do not delete it."
+        );
+    }
+
+    #[test]
+    fn test_redact_secrets_and_transient_error_classification() {
+        let raw_err = "Request to https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSySecretKey123456 failed with Bearer gsk_abcdef1234567890 and custom_secret_xyz";
+        let redacted = redact_secrets(raw_err, "custom_secret_xyz");
+        assert!(!redacted.contains("AIzaSySecretKey123456"));
+        assert!(!redacted.contains("gsk_abcdef1234567890"));
+        assert!(!redacted.contains("custom_secret_xyz"));
+        assert!(redacted.contains("[REDACTED_API_KEY]"));
+
+        assert!(is_transient_ai_error("API error (429 Too Many Requests)"));
+        assert!(is_transient_ai_error("API error (503 Service Unavailable)"));
+        assert!(is_transient_ai_error("Network error: operation timed out"));
+        assert!(!is_transient_ai_error("API error (401 Unauthorized)"));
+        assert!(!is_transient_ai_error("API error (403 Forbidden)"));
+        assert!(!is_transient_ai_error("Missing API key"));
     }
 }

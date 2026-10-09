@@ -69,10 +69,17 @@ impl VisualizerState {
         } else {
             0.0
         };
-        let mut changed = false;
-
-        const WEIGHTS: [f32; 5] = [0.55, 0.85, 1.0, 0.85, 0.55];
         let max_target = self.target_levels.iter().cloned().fold(0.0f32, f32::max);
+        let max_current = self.current_levels.iter().cloned().fold(0.0f32, f32::max);
+
+        if !self.is_recording && max_target <= 1e-4 && max_current <= 1e-4 {
+            self.current_levels = [0.0; 5];
+            self.phase = 0.0;
+            return false;
+        }
+
+        let mut changed = false;
+        const WEIGHTS: [f32; 5] = [0.55, 0.85, 1.0, 0.85, 0.55];
         let voice_active = max_target > 0.04;
 
         if self.is_recording && voice_active {
@@ -95,7 +102,12 @@ impl VisualizerState {
                 let prev = self.current_levels[i];
                 self.current_levels[i] += (self.target_levels[i] - self.current_levels[i]) * f;
                 self.current_levels[i] = if self.current_levels[i].is_finite() {
-                    self.current_levels[i].clamp(0.0, 1.0)
+                    let clamped = self.current_levels[i].clamp(0.0, 1.0);
+                    if self.target_levels[i] <= 1e-4 && clamped <= 1e-4 {
+                        0.0
+                    } else {
+                        clamped
+                    }
                 } else {
                     0.0
                 };

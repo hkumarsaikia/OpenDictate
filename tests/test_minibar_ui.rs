@@ -589,3 +589,80 @@ fn test_minibar_expand_drawer_and_clipboard_helper() {
         opendictate::ui::mini_bar::copy_text_to_clipboard("Test persistent clipboard copy");
     }
 }
+
+#[test]
+fn test_sanitize_dictation_for_output_preserves_multiline_unicode_and_strips_trailing_newlines() {
+    use opendictate::ui::mini_bar::sanitize_dictation_for_output;
+
+    // Strips trailing \r\n and \n so pasting into terminals/chat apps never submits
+    assert_eq!(
+        sanitize_dictation_for_output("git commit -m 'fix'\r\n\n"),
+        "git commit -m 'fix'"
+    );
+
+    // Preserves internal newlines while normalizing CRLF -> LF
+    assert_eq!(
+        sanitize_dictation_for_output("First paragraph.\r\nSecond paragraph.\n"),
+        "First paragraph.\nSecond paragraph."
+    );
+
+    // Preserves Unicode (Devanagari, CJK, accented characters, emojis)
+    let unicode_input = "नमस्ते दुनिया — 안녕하세요 — こんにちは — Café 🚀\n";
+    assert_eq!(
+        sanitize_dictation_for_output(unicode_input),
+        "नमस्ते दुनिया — 안녕하세요 — こんにちは — Café 🚀"
+    );
+}
+
+#[test]
+fn test_minibar_focus_protection_retranslation_and_idle_visualizer_snap() {
+    let mut vis = VisualizerState::new();
+    vis.update_levels([0.00005; 5]);
+    assert!(
+        !vis.interpolate(0.5),
+        "Sub-threshold idle levels must short-circuit without scheduling redraws"
+    );
+    assert_eq!(vis.current_levels(), [0.0; 5]);
+
+    if gtk4::is_initialized_main_thread() || (!gtk4::is_initialized() && gtk4::init().is_ok()) {
+        let _ = libadwaita::init();
+        let (_window, widgets) = opendictate::ui::mini_bar::build_minibar_window();
+
+        // Focus protection: clicking MiniBar buttons must not steal focus
+        assert!(!widgets.record_button.property::<bool>("focus-on-click"));
+        assert!(!widgets.pause_button.property::<bool>("focus-on-click"));
+        assert!(!widgets.cancel_button.property::<bool>("focus-on-click"));
+        assert!(!widgets.theme_button.property::<bool>("focus-on-click"));
+        assert!(!widgets.dashboard_button.property::<bool>("focus-on-click"));
+        assert!(!widgets.drawer_button.property::<bool>("focus-on-click"));
+        assert!(
+            !widgets
+                .drawer_widgets
+                .copy_button
+                .property::<bool>("focus-on-click")
+        );
+        assert!(
+            !widgets
+                .drawer_widgets
+                .clear_button
+                .property::<bool>("focus-on-click")
+        );
+
+        // Dynamic retranslation in Spanish and Arabic (RTL)
+        widgets.retranslate("es");
+        assert_eq!(
+            widgets.dashboard_button.tooltip_text().as_deref(),
+            Some("Configuración")
+        );
+        assert_eq!(
+            widgets.drawer_widgets.copy_button.tooltip_text().as_deref(),
+            Some("Copiar")
+        );
+
+        widgets.retranslate("ar");
+        assert_eq!(widgets.window.direction(), gtk4::TextDirection::Rtl);
+
+        widgets.retranslate("en");
+        assert_eq!(widgets.window.direction(), gtk4::TextDirection::Ltr);
+    }
+}

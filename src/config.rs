@@ -116,11 +116,74 @@ impl Config {
         }
     }
 
+    /// Validates and normalizes all configuration fields while preserving backward compatibility.
+    pub fn validate_and_normalize(&mut self) {
+        self.normalize_language();
+
+        // 0 means "Auto/System Default", 1..=128 is explicit CPU thread count
+        if self.local_threads > 128 {
+            self.local_threads = 128;
+        }
+
+        if self.minibar_scale == 0 {
+            self.minibar_scale = 100;
+        } else {
+            self.minibar_scale = self.minibar_scale.clamp(70, 200);
+        }
+
+        let theme_lower = self.theme.trim().to_ascii_lowercase();
+        self.theme = match theme_lower.as_str() {
+            "dark" | "white" | "light" => theme_lower,
+            _ => "dark".to_string(),
+        };
+
+        let minibar_theme_lower = self.minibar_theme.trim().to_ascii_lowercase();
+        self.minibar_theme = match minibar_theme_lower.as_str() {
+            "dark" | "white" | "light" => minibar_theme_lower,
+            _ => "dark".to_string(),
+        };
+
+        self.tone = match self.tone.trim().to_ascii_lowercase().as_str() {
+            "clean" => "Clean".to_string(),
+            "professional" => "Professional".to_string(),
+            "concise" => "Concise".to_string(),
+            "raw" => "Raw".to_string(),
+            _ => "Clean".to_string(),
+        };
+
+        self.ai_mode = match self.ai_mode.trim().to_ascii_lowercase().as_str() {
+            "cloud" => "cloud".to_string(),
+            "local" => "local".to_string(),
+            _ => "cloud".to_string(),
+        };
+
+        let provider_trimmed = self.ai_provider.trim();
+        if provider_trimmed.is_empty() {
+            self.ai_provider = "gemini".to_string();
+        } else {
+            self.ai_provider = provider_trimmed.to_string();
+        }
+
+        let local_model_trimmed = self.local_model_id.trim();
+        if local_model_trimmed.is_empty() {
+            self.local_model_id = "tiny.en".to_string();
+        } else {
+            self.local_model_id = local_model_trimmed.to_string();
+        }
+
+        let hotkey_trimmed = self.hotkey.trim();
+        if hotkey_trimmed.is_empty() {
+            self.hotkey = "Ctrl+Alt+D".to_string();
+        } else {
+            self.hotkey = hotkey_trimmed.to_string();
+        }
+    }
+
     /// Loads configuration from the specified path.
     pub fn load_from(path: &Path) -> Result<Config, ConfigError> {
         let content = std::fs::read_to_string(path)?;
         let mut config: Config = serde_json::from_str(&content)?;
-        config.normalize_language();
+        config.validate_and_normalize();
         Ok(config)
     }
 
@@ -157,15 +220,28 @@ impl Config {
         }
     }
 
-    /// Saves configuration to the specified path, creating any missing parent directories.
+    /// Saves configuration atomically to the specified path with owner-only permissions on Unix,
+    /// creating any missing parent directories.
     pub fn save_to(&self, path: &Path) -> Result<(), ConfigError> {
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
         {
             std::fs::create_dir_all(parent)?;
         }
-        let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, content)?;
+        let mut normalized = self.clone();
+        normalized.validate_and_normalize();
+        let content = serde_json::to_string_pretty(&normalized)?;
+
+        let tmp_path = path.with_extension("json.tmp");
+        std::fs::write(&tmp_path, content)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
+        }
+
+        std::fs::rename(&tmp_path, path)?;
         Ok(())
     }
 

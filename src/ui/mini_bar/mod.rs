@@ -271,6 +271,59 @@ impl MiniBarWidgets {
         self.visualizer_area.queue_draw();
         self.window.queue_resize();
     }
+
+    /// Dynamically retranslates MiniBar tooltips, accessible labels, and preview drawer strings.
+    pub fn retranslate(&self, lang: &str) {
+        use crate::services::i18n::tr;
+        let dir = if crate::services::i18n::is_rtl(lang) {
+            gtk4::TextDirection::Rtl
+        } else {
+            gtk4::TextDirection::Ltr
+        };
+        self.window.set_direction(dir);
+
+        let settings_tip = tr("settings", lang);
+        self.dashboard_button.set_tooltip_text(Some(settings_tip));
+        self.dashboard_button
+            .update_property(&[gtk4::accessible::Property::Label(settings_tip)]);
+
+        let theme_tip = tr("theme", lang);
+        self.theme_button.set_tooltip_text(Some(theme_tip));
+        self.theme_button
+            .update_property(&[gtk4::accessible::Property::Label(theme_tip)]);
+
+        let tone_tip = tr("tone_style", lang);
+        self.tone_dropdown.set_tooltip_text(Some(tone_tip));
+        self.tone_dropdown
+            .update_property(&[gtk4::accessible::Property::Label(tone_tip)]);
+
+        let copy_tip = tr("copy", lang);
+        self.drawer_widgets
+            .copy_button
+            .set_tooltip_text(Some(copy_tip));
+        self.drawer_widgets
+            .copy_button
+            .update_property(&[gtk4::accessible::Property::Label(copy_tip)]);
+
+        let clear_tip = tr("delete", lang);
+        self.drawer_widgets
+            .clear_button
+            .set_tooltip_text(Some(clear_tip));
+        self.drawer_widgets
+            .clear_button
+            .update_property(&[gtk4::accessible::Property::Label(clear_tip)]);
+
+        let cur_status = self.drawer_widgets.status_badge.text();
+        if cur_status == "Ready" || cur_status == tr("ready", "en") {
+            self.drawer_widgets.set_status(tr("ready", lang));
+        } else if cur_status.starts_with("Recording") {
+            self.drawer_widgets.set_status(tr("recording", lang));
+        } else if cur_status.starts_with("Transcribing") {
+            self.drawer_widgets.set_status(tr("transcribing", lang));
+        } else if cur_status.starts_with("Processing") {
+            self.drawer_widgets.set_status(tr("processing", lang));
+        }
+    }
 }
 
 /// Evaluates whether the active configuration is ready for dictation recording.
@@ -311,18 +364,27 @@ pub fn evaluate_recording_readiness_warning(config: &crate::config::Config) -> O
     }
 }
 
-/// Copies text to the system clipboard persistently on both Wayland and X11.
-/// Uses GTK4's native display clipboard plus a thread-local persistent `arboard::Clipboard`
-/// instance so X11 clipboard ownership is never dropped immediately after setting text.
+/// Sanitizes dictated text before clipboard delivery by normalizing CRLF line endings
+/// and stripping trailing `\r`/`\n` characters so pasting into terminals or chat apps
+/// never triggers an accidental `Enter`/submission, while preserving internal newlines and Unicode.
+pub fn sanitize_dictation_for_output(text: &str) -> String {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    normalized.trim_end_matches(['\r', '\n']).to_string()
+}
+
+/// Copies text to the system clipboard using the native GTK4/GDK display clipboard when available,
+/// falling back to a persistent thread-local `arboard::Clipboard` only when no GDK display exists.
 pub fn copy_text_to_clipboard(text: &str) {
-    if text.trim().is_empty() {
+    let sanitized = sanitize_dictation_for_output(text);
+    if sanitized.trim().is_empty() {
         return;
     }
 
     if gtk4::is_initialized()
         && let Some(display) = gtk4::gdk::Display::default()
     {
-        display.clipboard().set_text(text);
+        display.clipboard().set_text(&sanitized);
+        return;
     }
 
     thread_local! {
@@ -334,7 +396,7 @@ pub fn copy_text_to_clipboard(text: &str) {
             *opt = arboard::Clipboard::new().ok();
         }
         if let Some(ref mut clip) = *opt {
-            let _ = clip.set_text(text.to_string());
+            let _ = clip.set_text(sanitized);
         }
     });
 }
@@ -870,6 +932,8 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     record_button.add_css_class("suggested-action");
     record_button.add_css_class("minibar-record-button");
     record_button.set_tooltip_text(Some("Start Recording"));
+    record_button.set_focus_on_click(false);
+    record_button.update_property(&[gtk4::accessible::Property::Label("Start Recording")]);
     pill_box.append(&record_button);
 
     // 3. Pause / Resume button
@@ -877,6 +941,8 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     pause_button.add_css_class("circular");
     pause_button.add_css_class("flat");
     pause_button.set_tooltip_text(Some("Pause Recording"));
+    pause_button.set_focus_on_click(false);
+    pause_button.update_property(&[gtk4::accessible::Property::Label("Pause Recording")]);
     pause_button.set_sensitive(false);
     pill_box.append(&pause_button);
 
@@ -896,6 +962,8 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     cancel_button.add_css_class("circular");
     cancel_button.add_css_class("flat");
     cancel_button.set_tooltip_text(Some("Cancel Recording"));
+    cancel_button.set_focus_on_click(false);
+    cancel_button.update_property(&[gtk4::accessible::Property::Label("Cancel Recording")]);
     cancel_button.set_sensitive(false);
     pill_box.append(&cancel_button);
 
@@ -906,6 +974,8 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     // 8. Tone selector dropdown
     let tone_dropdown = gtk4::DropDown::from_strings(&["Clean", "Professional", "Concise", "Raw"]);
     tone_dropdown.set_tooltip_text(Some("Select Tone"));
+    tone_dropdown.set_focus_on_click(false);
+    tone_dropdown.update_property(&[gtk4::accessible::Property::Label("Select Tone")]);
     tone_dropdown.add_css_class("flat");
     pill_box.append(&tone_dropdown);
 
@@ -917,6 +987,8 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     copy_button.add_css_class("circular");
     copy_button.add_css_class("flat");
     copy_button.set_tooltip_text(Some("Quick Copy to Clipboard"));
+    copy_button.set_focus_on_click(false);
+    copy_button.update_property(&[gtk4::accessible::Property::Label("Quick Copy to Clipboard")]);
     copy_button.set_visible(false);
 
     let copy_btn_clone = copy_button.clone();
@@ -938,6 +1010,8 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     theme_button.add_css_class("circular");
     theme_button.add_css_class("flat");
     theme_button.set_tooltip_text(Some("Switch Theme"));
+    theme_button.set_focus_on_click(false);
+    theme_button.update_property(&[gtk4::accessible::Property::Label("Switch Theme")]);
     pill_box.append(&theme_button);
 
     // 11. Settings button with proper org.gnome.Settings-symbolic gear icon
@@ -945,6 +1019,8 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     dashboard_button.add_css_class("circular");
     dashboard_button.add_css_class("flat");
     dashboard_button.set_tooltip_text(Some("Settings"));
+    dashboard_button.set_focus_on_click(false);
+    dashboard_button.update_property(&[gtk4::accessible::Property::Label("Settings")]);
     pill_box.append(&dashboard_button);
 
     // 12. Drawer expander button
@@ -952,6 +1028,10 @@ pub fn build_minibar_widgets(window: &gtk4::Window) -> MiniBarWidgets {
     drawer_button.add_css_class("circular");
     drawer_button.add_css_class("flat");
     drawer_button.set_tooltip_text(Some("Toggle Transcription Preview"));
+    drawer_button.set_focus_on_click(false);
+    drawer_button.update_property(&[gtk4::accessible::Property::Label(
+        "Toggle Transcription Preview",
+    )]);
     pill_box.append(&drawer_button);
 
     main_col.append(&handle);

@@ -221,6 +221,24 @@ fn test_dictation_worker_stop_and_cancel_lifecycle() {
 
     let sender = worker.sender();
 
+    // 0. Verify duplicate StopAndProcess while Idle emits nothing
+    sender
+        .send(DictationWorkerInput::StopAndProcess {
+            tone: "Clean".to_string(),
+        })
+        .unwrap();
+    sender
+        .send(DictationWorkerInput::StopAndProcess {
+            tone: "Clean".to_string(),
+        })
+        .unwrap();
+    assert!(
+        out_rx
+            .recv_timeout(std::time::Duration::from_millis(80))
+            .is_err(),
+        "StopAndProcess while Idle must not trigger duplicate processing or spurious outputs"
+    );
+
     // 1. Start recording
     sender
         .send(DictationWorkerInput::ToggleRecording {
@@ -297,4 +315,128 @@ fn test_dictation_worker_stop_and_cancel_lifecycle() {
             );
         }
     }
+}
+
+#[tokio::test]
+async fn test_session_commit_gate_cancellation_race_with_completion() {
+    use opendictate::services::dictation_worker::SessionCommitGate;
+
+    let gate = SessionCommitGate::new();
+    let storage = StorageService::in_memory().unwrap();
+
+    // 1. Session 1 starts and spawns an uninterruptible native blocking inference task
+    let session_1 = gate.advance();
+    assert_eq!(session_1, 1);
+
+    let gate_worker = gate.clone();
+    let storage_worker = storage.clone();
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<bool>();
+
+    let inference_handle = tokio::spawn(async move {
+        // Simulate uninterruptible native FFI Whisper inference running while user cancels
+        tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+
+        // Final worker commit gate before SQLite insert and channel emission
+        if gate_worker.validate_and_tag(session_1) {
+            let _ = storage_worker.insert_dictation(
+                "stale raw transcript",
+                "Stale enhanced transcript.",
+                "Clean",
+                "dictation",
+                2.0,
+            );
+            let _ = done_tx.send(true);
+        } else {
+            let _ = done_tx.send(false);
+        }
+    });
+
+    // 2. User cancels 15ms into inference (before native Whisper finishes)
+    tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+    gate.advance();
+
+    let committed = done_rx.await.unwrap();
+    let _ = inference_handle.await;
+
+    assert!(
+        !committed,
+        "Stale completion racing with cancellation must be rejected at the commit gate"
+    );
+    assert!(
+        storage.list_dictations().unwrap().is_empty(),
+        "Cancelled session must never write to SQLite history"
+    );
+}
+
+#[test]
+fn test_session_commit_gate_prevents_stale_session_from_overwriting_newer_session() {
+    use opendictate::services::dictation_worker::SessionCommitGate;
+
+    let gate = SessionCommitGate::new();
+
+    // Session 1 starts
+    let session_1 = gate.advance();
+    assert!(gate.is_valid_commit(session_1));
+
+    // Session 1 is cancelled, then Session 2 starts immediately
+    let _cancel_epoch = gate.advance();
+    let session_2 = gate.advance();
+    assert!(!gate.is_valid_commit(session_1));
+    assert!(gate.is_valid_commit(session_2));
+
+    // Late completion from Session 1 tries to commit while Session 2 is active
+    assert!(
+        !gate.validate_and_tag(session_1),
+        "Stale Session 1 must not validate or tag while Session 2 is active"
+    );
+
+    // Session 2 completes normally
+    assert!(
+        gate.validate_and_tag(session_2),
+        "Active Session 2 must validate and tag cleanly"
+    );
+    assert!(gate.is_last_output_valid());
+
+    // Now test channel-flight race: if user clicks Cancel after worker tagged output_session_id
+    // but before the UI thread processes the queued message:
+    gate.advance();
+    assert!(
+        !gate.is_last_output_valid(),
+        "UI commit point must reject queued output if Cancel was clicked while message was in flight"
+    );
+}
+
+#[test]
+fn test_worker_lifecycle_state_and_duplicate_stop_guard() {
+    use opendictate::services::dictation_worker::RecordingLifecycleState;
+
+    let config = Config::default();
+    let storage = StorageService::in_memory().unwrap();
+    let worker = DictationWorker::new(config, storage);
+    assert_eq!(worker.lifecycle_state(), RecordingLifecycleState::Idle);
+    assert!(!worker.is_recording());
+    assert!(!worker.is_paused());
+    assert!(!worker.is_processing());
+}
+
+#[test]
+fn test_audio_recorder_stream_error_flag_recovery() {
+    use opendictate::audio::recorder::AudioRecorder;
+
+    let recorder = AudioRecorder::default();
+    let snap = recorder.snapshot_handle();
+    assert!(!recorder.take_stream_error());
+    assert!(!snap.take_stream_error());
+
+    // Simulate mid-recording hardware microphone unplug / stream error
+    recorder.simulate_stream_error();
+    assert!(!recorder.is_recording());
+    assert!(
+        snap.take_stream_error(),
+        "Snapshot handle must observe simulated hardware stream error"
+    );
+    assert!(
+        !recorder.take_stream_error(),
+        "Stream error flag must be atomically cleared once taken"
+    );
 }

@@ -112,3 +112,87 @@ fn test_config_default_language_is_english_and_normalizes_invalid() {
         "Empty ui_language must normalize to 'en'"
     );
 }
+
+#[test]
+fn test_config_validate_and_normalize_clamping_and_fallbacks() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let bad_path = dir.path().join("bad_config.json");
+
+    let json_data = r#"{
+        "theme": "neon_purple",
+        "minibar_theme": "WHITE",
+        "tone": "RAW",
+        "ai_mode": "invalid_mode",
+        "ai_provider": "   ",
+        "local_model_id": "",
+        "hotkey": "  ",
+        "local_threads": 0,
+        "minibar_scale": 0
+    }"#;
+    fs::write(&bad_path, json_data).expect("failed to write bad_config.json");
+
+    let loaded = Config::load_from(&bad_path).expect("failed to load bad_config.json");
+    assert_eq!(loaded.theme, "dark");
+    assert_eq!(loaded.minibar_theme, "white");
+    assert_eq!(loaded.tone, "Raw");
+    assert_eq!(loaded.ai_mode, "cloud");
+    assert_eq!(loaded.ai_provider, "gemini");
+    assert_eq!(loaded.local_model_id, "tiny.en");
+    assert_eq!(loaded.hotkey, "Ctrl+Alt+D");
+    assert_eq!(loaded.local_threads, 0);
+    assert_eq!(loaded.minibar_scale, 100);
+
+    let extreme_path = dir.path().join("extreme_config.json");
+    fs::write(
+        &extreme_path,
+        r#"{"local_threads": 500, "minibar_scale": 10, "tone": "professional"}"#,
+    )
+    .expect("failed to write extreme_config.json");
+    let loaded_extreme = Config::load_from(&extreme_path).expect("failed to load extreme_config");
+    assert_eq!(loaded_extreme.local_threads, 128);
+    assert_eq!(loaded_extreme.minibar_scale, 70);
+    assert_eq!(loaded_extreme.tone, "Professional");
+
+    let high_scale_path = dir.path().join("high_scale.json");
+    fs::write(&high_scale_path, r#"{"minibar_scale": 999}"#).expect("failed to write high_scale");
+    let loaded_high = Config::load_from(&high_scale_path).expect("failed to load high_scale");
+    assert_eq!(loaded_high.minibar_scale, 200);
+}
+
+#[test]
+fn test_config_atomic_save_and_unix_permissions() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let file_path = dir.path().join("config.json");
+    let tmp_path = file_path.with_extension("json.tmp");
+
+    let cfg = Config {
+        ai_api_key: "sk-secret-key-test".to_string(),
+        minibar_scale: 350, // Should normalize to 200 on save
+        ..Default::default()
+    };
+
+    cfg.save_to(&file_path).expect("failed to save config");
+    assert!(file_path.exists());
+    assert!(
+        !tmp_path.exists(),
+        "Temporary file must be renamed atomically and not left behind"
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(&file_path)
+            .expect("failed to read metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "Config file containing API keys must have 0o600 permissions on Unix"
+        );
+    }
+
+    let reloaded = Config::load_from(&file_path).expect("failed to reload config");
+    assert_eq!(reloaded.minibar_scale, 200);
+    assert_eq!(reloaded.ai_api_key, "sk-secret-key-test");
+}

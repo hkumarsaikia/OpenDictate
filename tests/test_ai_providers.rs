@@ -531,3 +531,44 @@ fn test_model_audio_capability_and_paid_plan_validation() {
         None
     );
 }
+
+#[tokio::test]
+async fn test_ai_error_secret_redaction_and_enhance_raw_passthrough() {
+    use opendictate::config::Config;
+    use opendictate::services::ai::{AiError, AiManager, is_transient_ai_error, redact_secrets};
+
+    // 1. Secret redaction in AiError Display
+    let err = AiError::ApiError(
+        "HTTP 401 from https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSySuperSecret123456 with Bearer sk-proj-9876543210abcdef".to_string(),
+    );
+    let formatted = err.to_string();
+    assert!(!formatted.contains("AIzaSySuperSecret123456"));
+    assert!(!formatted.contains("sk-proj-9876543210abcdef"));
+    assert!(formatted.contains("[REDACTED_API_KEY]"));
+
+    // 2. Custom API key redaction
+    let custom = redact_secrets(
+        "Auth failed for token my-secret-token-999",
+        "my-secret-token-999",
+    );
+    assert!(!custom.contains("my-secret-token-999"));
+    assert!(custom.contains("[REDACTED_API_KEY]"));
+
+    // 3. Transient vs non-transient classification
+    assert!(is_transient_ai_error("HTTP 429 Too Many Requests"));
+    assert!(is_transient_ai_error("HTTP 503 Service Unavailable"));
+    assert!(!is_transient_ai_error("HTTP 401 Unauthorized"));
+    assert!(!is_transient_ai_error("HTTP 403 Forbidden"));
+
+    // 4. Cloud AiManager::enhance in Raw tone returns raw text without failing or erasing
+    let cfg = Config {
+        ai_mode: "cloud".to_string(),
+        ..Default::default()
+    };
+    let mgr = AiManager::with_config(&cfg);
+    let raw_out = mgr
+        .enhance("Keep v2.0.0 and Cargo.toml intact", "Raw")
+        .await
+        .expect("Raw tone should succeed without network call");
+    assert_eq!(raw_out, "Keep v2.0.0 and Cargo.toml intact");
+}

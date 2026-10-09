@@ -22,7 +22,9 @@ pub mod opencode;
 pub mod openrouter;
 pub mod utils;
 
-pub use utils::{apply_smart_local_formatting, format_enhancement_prompt};
+pub use utils::{
+    apply_smart_local_formatting, format_enhancement_prompt, is_transient_ai_error, redact_secrets,
+};
 
 /// Standardized user-facing warning when a selected AI model does not support audio input.
 pub const AUDIO_UNSUPPORTED_WARNING: &str =
@@ -69,8 +71,14 @@ impl std::fmt::Display for AiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AiError::MissingApiKey => write!(f, "Missing API key"),
-            AiError::NetworkError(err) => write!(f, "Network error: {}", err),
-            AiError::ApiError(msg) => write!(f, "API error: {}", msg),
+            AiError::NetworkError(err) => {
+                let redacted = utils::redact_secrets(&err.to_string(), "");
+                write!(f, "Network error: {}", redacted)
+            }
+            AiError::ApiError(msg) => {
+                let redacted = utils::redact_secrets(msg, "");
+                write!(f, "API error: {}", redacted)
+            }
             AiError::AudioEncodingError(msg) => write!(f, "Audio encoding error: {}", msg),
             AiError::UnsupportedOperation(msg) => write!(f, "Unsupported operation: {}", msg),
             AiError::JsonError(err) => write!(f, "JSON error: {}", err),
@@ -1396,11 +1404,8 @@ pub async fn fetch_models_for_provider(
             list
         }
         "gemini" => {
-            let url = format!(
-                "https://generativelanguage.googleapis.com/v1beta/models?key={}",
-                key
-            );
-            let res = client.get(&url).send().await?;
+            let url = "https://generativelanguage.googleapis.com/v1beta/models";
+            let res = client.get(url).header("x-goog-api-key", key).send().await?;
             if !res.status().is_success() {
                 return Err(AiError::ApiError(format!(
                     "Gemini API returned HTTP {}",
@@ -1941,10 +1946,14 @@ pub async fn fetch_model_usage_limits(
                 .strip_prefix("models/")
                 .unwrap_or(&effective_model);
             let url = format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{}?key={}",
-                clean_model, key
+                "https://generativelanguage.googleapis.com/v1beta/models/{}",
+                clean_model
             );
-            let res = client.get(&url).send().await?;
+            let res = client
+                .get(&url)
+                .header("x-goog-api-key", key)
+                .send()
+                .await?;
             if !res.status().is_success() {
                 info.key_status = format!("API Error (HTTP {})", res.status());
                 return Ok(info);
@@ -2314,6 +2323,29 @@ impl AiManager {
             .unwrap_or("cloud")
     }
 
+    fn redact_error(&self, err: AiError) -> AiError {
+        let configured_key = self
+            .config
+            .as_ref()
+            .map(|c| c.ai_api_key.as_str())
+            .unwrap_or("");
+        match err {
+            AiError::ApiError(msg) => {
+                AiError::ApiError(utils::redact_secrets(&msg, configured_key))
+            }
+            AiError::NetworkError(net_err) => {
+                let raw = net_err.to_string();
+                let redacted = utils::redact_secrets(&raw, configured_key);
+                if redacted != raw {
+                    AiError::ApiError(format!("Network error: {}", redacted))
+                } else {
+                    AiError::NetworkError(net_err)
+                }
+            }
+            other => other,
+        }
+    }
+
     /// Transcribes audio bytes using the currently configured provider.
     pub async fn transcribe(&self, audio_wav: &[u8]) -> Result<String, AiError> {
         if self.active_mode() == "local" {
@@ -2336,7 +2368,15 @@ impl AiManager {
             .map(|c| c.ai_provider.as_str())
             .unwrap_or("groq");
         let provider = self.get_provider(provider_name)?;
-        match provider.transcribe(audio_wav.to_vec(), None).await {
+        let mut first_attempt = provider.transcribe(audio_wav.to_vec(), None).await;
+        if let Err(ref e) = first_attempt
+            && utils::is_transient_ai_error(&e.to_string())
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            first_attempt = provider.transcribe(audio_wav.to_vec(), None).await;
+        }
+
+        match first_attempt {
             Ok(text) => Ok(text),
             Err(AiError::UnsupportedOperation(msg)) => {
                 // If primary provider is enhancement-only, fall back to available audio STT providers
@@ -2349,7 +2389,7 @@ impl AiManager {
                 }
                 Err(AiError::UnsupportedOperation(msg))
             }
-            Err(e) => Err(e),
+            Err(e) => Err(self.redact_error(e)),
         }
     }
 
@@ -2359,13 +2399,37 @@ impl AiManager {
             return Ok(utils::apply_smart_local_formatting(text, tone));
         }
 
+        if text.trim().is_empty() {
+            return Ok(String::new());
+        }
+        if tone.trim().eq_ignore_ascii_case("raw") {
+            return Ok(text.to_string());
+        }
+
         let provider_name = self
             .config
             .as_ref()
             .map(|c| c.ai_provider.as_str())
             .unwrap_or("groq");
         let provider = self.get_provider(provider_name)?;
-        provider.enhance(text, tone).await
+        let mut res = provider.enhance(text, tone).await;
+        if let Err(ref e) = res
+            && utils::is_transient_ai_error(&e.to_string())
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            res = provider.enhance(text, tone).await;
+        }
+
+        match res {
+            Ok(enhanced) => {
+                if enhanced.trim().is_empty() {
+                    Ok(text.to_string())
+                } else {
+                    Ok(enhanced)
+                }
+            }
+            Err(e) => Err(self.redact_error(e)),
+        }
     }
 
     /// Returns list of all supported AI provider identifiers.

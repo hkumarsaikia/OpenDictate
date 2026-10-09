@@ -309,8 +309,45 @@ pub async fn download_local_model(
     Ok(target_path)
 }
 
+/// Collapses pathological Whisper decoder loops where the exact same word is repeated
+/// 4 or more times consecutively (e.g. "the the the the the" -> "the"), while preserving
+/// natural 2x and 3x spoken emphasis ("very very", "no no no").
+pub fn collapse_excessive_repetitions(text: &str) -> String {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    if words.len() < 4 {
+        return words.join(" ");
+    }
+
+    let mut out: Vec<&str> = Vec::with_capacity(words.len());
+    let mut i = 0;
+    while i < words.len() {
+        let w = words[i];
+        let norm = w.trim_matches(|c: char| !c.is_alphanumeric());
+        let mut run_len = 1;
+        while i + run_len < words.len() {
+            let next_norm = words[i + run_len].trim_matches(|c: char| !c.is_alphanumeric());
+            if !norm.is_empty() && norm.eq_ignore_ascii_case(next_norm) {
+                run_len += 1;
+            } else {
+                break;
+            }
+        }
+        if run_len >= 4 {
+            out.push(words[i + run_len - 1]);
+            i += run_len;
+        } else {
+            for item in &words[i..i + run_len] {
+                out.push(item);
+            }
+            i += run_len;
+        }
+    }
+    out.join(" ")
+}
+
 /// Filters out Whisper non-speech markers (`[BLANK_AUDIO]`, `(blank audio)`, `[ Silence ]`,
-/// `[ Music ]`, `[INAUDIBLE]`, etc.) so ambient silence never prints fake tokens into the UI.
+/// `[ Music ]`, `[INAUDIBLE]`, etc.) so ambient silence never prints fake tokens into the UI,
+/// and collapses pathological >= 4x decoder repetition loops without deleting legitimate speech.
 pub fn clean_whisper_segment(seg: &str) -> String {
     let trimmed = seg.trim();
     if trimmed.is_empty() {
@@ -352,7 +389,7 @@ pub fn clean_whisper_segment(seg: &str) -> String {
             cleaned = cleaned.replace(marker, " ");
         }
     }
-    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+    collapse_excessive_repetitions(&cleaned)
 }
 
 /// Local AI Provider implementing `AiProvider` via embedded speech engine.
@@ -405,10 +442,7 @@ impl LocalAiProvider {
             .to_str()
             .ok_or_else(|| AiError::ApiError(format!("Invalid model path: {:?}", model_path)))?;
 
-        type CachedWhisperCtx = (
-            String,
-            std::sync::Arc<local_speech_engine::WhisperContext>,
-        );
+        type CachedWhisperCtx = (String, std::sync::Arc<local_speech_engine::WhisperContext>);
         static CACHED_CTX: std::sync::OnceLock<std::sync::Mutex<Option<CachedWhisperCtx>>> =
             std::sync::OnceLock::new();
 
@@ -457,6 +491,17 @@ impl LocalAiProvider {
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
+        params.set_suppress_blank(true);
+        params.set_suppress_nst(true);
+        params.set_no_speech_thold(0.6);
+        params.set_entropy_thold(2.4);
+        params.set_logprob_thold(-1.0);
+
+        if samples.len() < 400_000 {
+            let raw_ctx = ((samples.len() as f32 / 480_000.0) * 1500.0).ceil() as i32 + 128;
+            let aligned_ctx = ((raw_ctx + 63) / 64 * 64).clamp(512, 1500);
+            params.set_audio_ctx(aligned_ctx);
+        }
 
         let filename = model_path
             .file_name()
