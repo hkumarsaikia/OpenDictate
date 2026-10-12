@@ -77,6 +77,17 @@
   </supports>
 
   <releases>
+    <release version="2.0.1" date="2026-10-12">
+      <description>
+        <p>Reliability and performance release introducing dual-binary CPU dispatch and hardware microphone routing improvements.</p>
+        <ul>
+          <li>Dual-binary architecture with portable x86-64-v1 baseline and transparent runtime dispatch to accelerated AVX2 sibling</li>
+          <li>WirePlumber audio routing prioritizing internal microphones over silent Bluetooth profiles</li>
+          <li>Zero-copy 16 kHz audio sample processing for local Whisper streaming transcription</li>
+          <li>GNOME 51 runtime and Freedesktop SDK 26.08 packaging alignment</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.0.0" date="2026-10-02">
       <description>
         <p>Major release featuring offline Whisper GGML speech recognition, multi-provider Cloud AI transcription, 28-language localization, and persistent dictation history.</p>

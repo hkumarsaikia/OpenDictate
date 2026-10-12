@@ -5,5 +5,5 @@ fn test_rust_binary_compiles() {
 
 #[test]
 fn test_opendictate_version() {
-    assert_eq!(opendictate::VERSION, "2.0.0");
+    assert_eq!(opendictate::VERSION, "2.0.1");
 }

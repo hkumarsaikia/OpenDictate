@@ -33,7 +33,7 @@ pub const GITHUB_NEW_ISSUE_URL: &str = "https://github.com/hkumarsaikia/OpenDict
 /// Structured crash report persisted to disk on panic and loaded into the recovery UI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CrashReport {
-    /// Default issue title (e.g., `Crash Report: v2.0.0 panic at src/audio/capture.rs:142`).
+    /// Default issue title (e.g., `Crash Report: v2.0.1 panic at src/audio/capture.rs:142`).
     pub title: String,
     /// Source location (`file:line:col`) where the panic occurred.
     pub location: String,

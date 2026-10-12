@@ -260,7 +260,7 @@ pub async fn download_local_model(
     let part_path = dir.join(format!("{}.part", info.filename));
 
     let client = reqwest::Client::builder()
-        .user_agent("OpenDictate/2.0.0 (Linux; x86_64)")
+        .user_agent(concat!("OpenDictate/", env!("CARGO_PKG_VERSION"), " (Linux; x86_64)"))
         .build()
         .unwrap_or_default();
 

@@ -1888,7 +1888,7 @@ pub async fn fetch_model_usage_limits(
     let mut info = default_model_usage_limits(&normalized, &effective_model, true);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(12))
-        .user_agent("OpenDictate/2.0.0")
+        .user_agent(concat!("OpenDictate/", env!("CARGO_PKG_VERSION")))
         .build()
         .unwrap_or_default();
 
@@ -2196,7 +2196,7 @@ pub async fn verify_model_selection_live(
     } else if !key.is_empty() {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(8))
-            .user_agent("OpenDictate/2.0.0")
+            .user_agent(concat!("OpenDictate/", env!("CARGO_PKG_VERSION")))
             .build()
             .unwrap_or_default();
 
@@ -2299,7 +2299,7 @@ impl AiManager {
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
-            .user_agent("OpenDictate/2.0.0 (Linux; x86_64)")
+            .user_agent(concat!("OpenDictate/", env!("CARGO_PKG_VERSION"), " (Linux; x86_64)"))
             .build()
             .unwrap_or_default();
         Self {

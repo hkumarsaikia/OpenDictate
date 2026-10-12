@@ -970,7 +970,7 @@ fn test_main_menu_button_and_dialogs() {
         };
         let diag =
             opendictate::ui::main_window::header::generate_troubleshooting_diagnostics(&config);
-        assert!(diag.contains("OpenDictate 2.0.0"));
+        assert!(diag.contains(&format!("OpenDictate {}", opendictate::VERSION)));
         assert!(diag.contains("Local AI"));
         assert!(diag.contains("tiny.en"));
         assert!(diag.contains("Inference Threads: 4"));
@@ -978,7 +978,7 @@ fn test_main_menu_button_and_dialogs() {
         // Verify About dialog construction
         let about = opendictate::ui::main_window::header::build_about_dialog(&config);
         assert_eq!(about.application_name(), "OpenDictate");
-        assert_eq!(about.version(), "2.0.0");
+        assert_eq!(about.version(), opendictate::VERSION);
         assert_eq!(about.developer_name(), "OpenDictate Team");
 
         // Verify troubleshooting, credits, and legal dialog launchers construct without panic

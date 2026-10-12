@@ -32,7 +32,9 @@ fn test_crash_report_generation_and_privacy_sanitization() {
 
     let report = CrashReporter::build_report(&panic_msg, location, &backtrace, &cfg);
 
-    assert!(report.title.contains("Crash Report: OpenDictate v2.0.0"));
+    assert!(report
+        .title
+        .contains(&format!("Crash Report: OpenDictate v{}", opendictate::VERSION)));
     assert!(report.title.contains("src/audio/capture.rs:142:18"));
     assert!(!report.message.contains(&fake_home));
     assert!(report.message.contains("~/recordings/chunk.pcm"));

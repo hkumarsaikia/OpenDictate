@@ -5,7 +5,7 @@
 [![Libadwaita](https://img.shields.io/badge/Libadwaita-1.5+-purple.svg)](https://gnome.pages.gitlab.gnome.org/libadwaita/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![i18n: 28 Languages](https://img.shields.io/badge/i18n-28%20Languages-blue.svg)](docs/PACKAGING.md#7-internationalization-i18n--localized-desktops)
-[![Release](https://img.shields.io/badge/release-v2.0.0-success.svg)](https://github.com/hkumarsaikia/OpenDictate/releases/tag/v2.0.0)
+[![Release](https://img.shields.io/badge/release-v2.0.1-success.svg)](https://github.com/hkumarsaikia/OpenDictate/releases/tag/v2.0.1)
 
 **OpenDictate** is a native Linux voice dictation and AI speech-to-text application built in 100% pure Rust with GTK 4.12+, Libadwaita 1.5+, and Relm4. It combines private on-device Whisper transcription with multi-provider Cloud AI models to turn spoken voice into clean, polished text across Wayland and X11 desktops.
 
@@ -28,30 +28,30 @@
 
 ## Quick Start & Installation
 
-Download pre-built packages directly from **[GitHub Releases (`v2.0.0`)](https://github.com/hkumarsaikia/OpenDictate/releases/tag/v2.0.0)**:
+Download pre-built packages directly from **[GitHub Releases (`v2.0.1`)](https://github.com/hkumarsaikia/OpenDictate/releases/tag/v2.0.1)**:
 
 ### 1. Run Instantly Without Installing (Portable AppImage)
 ```bash
-curl -fL https://github.com/hkumarsaikia/OpenDictate/releases/download/v2.0.0/OpenDictate-2.0.0-x86_64.AppImage -o OpenDictate.AppImage && chmod +x OpenDictate.AppImage && ./OpenDictate.AppImage
+curl -fL https://github.com/hkumarsaikia/OpenDictate/releases/download/v2.0.1/OpenDictate-2.0.1-x86_64.AppImage -o OpenDictate.AppImage && chmod +x OpenDictate.AppImage && ./OpenDictate.AppImage
 ```
 
 ### 2. Debian, Ubuntu, Linux Mint, Zorin OS, Kali & elementary OS (`.deb`)
 ```bash
 # Install AVX2-accelerated package (Intel Haswell 2013+ / AMD Zen 2017+)
-sudo apt install ./opendictate_2.0.0_avx2_amd64.deb
+sudo apt install ./opendictate_2.0.1_avx2_amd64.deb
 
 # Or install Universal x86_64 package (older CPUs)
-sudo apt install ./opendictate_2.0.0_universal_amd64.deb
+sudo apt install ./opendictate_2.0.1_universal_amd64.deb
 ```
 
 ### 3. Universal Flatpak & Canonical Snap
 ```bash
 # Flatpak bundle
-flatpak install --user opendictate_2.0.0_amd64.flatpak
+flatpak install --user opendictate_2.0.1_amd64.flatpak
 flatpak run io.github.opendictate.OpenDictate
 
 # Snap package
-sudo snap install --dangerous opendictate_2.0.0_amd64.snap
+sudo snap install --dangerous opendictate_2.0.1_amd64.snap
 sudo snap connect opendictate:audio-record
 ```
 

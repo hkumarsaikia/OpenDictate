@@ -1180,7 +1180,7 @@ pub fn build_about_dialog(config: &Config) -> libadwaita::AboutDialog {
     let dialog = libadwaita::AboutDialog::builder()
         .application_name("OpenDictate")
         .application_icon(app_icon)
-        .version("2.0.0")
+        .version(crate::VERSION)
         .developer_name("OpenDictate Team")
         .issue_url("https://github.com/hkumarsaikia/OpenDictate/issues")
         .copyright("© 2026 OpenDictate Team")
