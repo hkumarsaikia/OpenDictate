@@ -389,8 +389,325 @@ pub fn clean_whisper_segment(seg: &str) -> String {
             cleaned = cleaned.replace(marker, " ");
         }
     }
+    if !cleaned.chars().any(|c| c.is_alphanumeric()) {
+        return String::new();
+    }
     collapse_excessive_repetitions(&cleaned)
 }
+
+/// Compile-time or runtime x86_64 SIMD features required/supported by `ggml-cpu`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompiledX86SimdFeatures {
+    pub sse3: bool,
+    pub ssse3: bool,
+    pub sse41: bool,
+    pub sse42: bool,
+    pub avx: bool,
+    pub avx_vnni: bool,
+    pub avx2: bool,
+    pub fma: bool,
+    pub f16c: bool,
+    pub bmi2: bool,
+    pub avx512: bool,
+    pub avx512_vbmi: bool,
+    pub avx512_vnni: bool,
+    pub avx512_bf16: bool,
+}
+
+impl CompiledX86SimdFeatures {
+    /// Returns the baseline portable `x86-64-v1` (`SSE2`) feature profile where no optional
+    /// x86_64 extensions beyond ABI-guaranteed `SSE2` are required.
+    pub const fn portable_x86_64_v1() -> Self {
+        Self {
+            sse3: false,
+            ssse3: false,
+            sse41: false,
+            sse42: false,
+            avx: false,
+            avx_vnni: false,
+            avx2: false,
+            fma: false,
+            f16c: false,
+            bmi2: false,
+            avx512: false,
+            avx512_vbmi: false,
+            avx512_vnni: false,
+            avx512_bf16: false,
+        }
+    }
+
+    /// Returns the required feature set for the optimized `opendictate-avx2` binary tier
+    /// (`SSE3`, `SSSE3`, `SSE4.1`, `SSE4.2`, `AVX`, `AVX2`, `FMA`, `F16C`, and `BMI2`).
+    pub const fn avx2_optimized_tier() -> Self {
+        Self {
+            sse3: true,
+            ssse3: true,
+            sse41: true,
+            sse42: true,
+            avx: true,
+            avx_vnni: false,
+            avx2: true,
+            fma: true,
+            f16c: true,
+            bmi2: true,
+            avx512: false,
+            avx512_vbmi: false,
+            avx512_vnni: false,
+            avx512_bf16: false,
+        }
+    }
+}
+
+/// Queries the compile-time SIMD flags baked into `libggml-cpu.a` via the lightweight
+/// `ggml_cpu_has_*()` C helpers (which return `#if defined(__AVX2__) 1 #else 0` without
+/// executing any SIMD instructions) plus compile-time `GGML_SSE42` / `AVX` requirements.
+pub fn compiled_x86_simd_features() -> CompiledX86SimdFeatures {
+    unsafe extern "C" {
+        fn ggml_cpu_has_sse3() -> std::os::raw::c_int;
+        fn ggml_cpu_has_ssse3() -> std::os::raw::c_int;
+        fn ggml_cpu_has_avx() -> std::os::raw::c_int;
+        fn ggml_cpu_has_avx_vnni() -> std::os::raw::c_int;
+        fn ggml_cpu_has_avx2() -> std::os::raw::c_int;
+        fn ggml_cpu_has_fma() -> std::os::raw::c_int;
+        fn ggml_cpu_has_f16c() -> std::os::raw::c_int;
+        fn ggml_cpu_has_bmi2() -> std::os::raw::c_int;
+        fn ggml_cpu_has_avx512() -> std::os::raw::c_int;
+        fn ggml_cpu_has_avx512_vbmi() -> std::os::raw::c_int;
+        fn ggml_cpu_has_avx512_vnni() -> std::os::raw::c_int;
+        fn ggml_cpu_has_avx512_bf16() -> std::os::raw::c_int;
+    }
+    let sse42_env = matches!(
+        option_env!("GGML_SSE42"),
+        Some("ON" | "on" | "1" | "TRUE" | "true")
+    );
+    unsafe {
+        let avx2 = ggml_cpu_has_avx2() != 0;
+        let avx = (ggml_cpu_has_avx() != 0) || avx2;
+        // Architectural dependency chain in x86-64 and GCC/Clang (`-mavx` -> `-msse4.2` -> `-msse4.1`):
+        let sse42 = avx || sse42_env || cfg!(target_feature = "sse4.2");
+        let sse41 = sse42 || cfg!(target_feature = "sse4.1");
+        CompiledX86SimdFeatures {
+            sse3: ggml_cpu_has_sse3() != 0,
+            ssse3: ggml_cpu_has_ssse3() != 0,
+            sse41,
+            sse42,
+            avx,
+            avx_vnni: ggml_cpu_has_avx_vnni() != 0,
+            avx2,
+            fma: ggml_cpu_has_fma() != 0,
+            f16c: ggml_cpu_has_f16c() != 0,
+            bmi2: ggml_cpu_has_bmi2() != 0,
+            avx512: ggml_cpu_has_avx512() != 0,
+            avx512_vbmi: ggml_cpu_has_avx512_vbmi() != 0,
+            avx512_vnni: ggml_cpu_has_avx512_vnni() != 0,
+            avx512_bf16: ggml_cpu_has_avx512_bf16() != 0,
+        }
+    }
+}
+
+/// Detects the x86_64 SIMD features supported at runtime by both the host CPU (`CPUID`)
+/// and the operating system (`XGETBV` OSXSAVE state for YMM/ZMM registers).
+pub fn detected_x86_simd_features() -> CompiledX86SimdFeatures {
+    #[cfg(target_arch = "x86_64")]
+    {
+        let has_avx512_base = std::arch::is_x86_feature_detected!("avx512f")
+            && std::arch::is_x86_feature_detected!("avx512cd")
+            && std::arch::is_x86_feature_detected!("avx512vl")
+            && std::arch::is_x86_feature_detected!("avx512dq")
+            && std::arch::is_x86_feature_detected!("avx512bw");
+        CompiledX86SimdFeatures {
+            sse3: std::arch::is_x86_feature_detected!("sse3"),
+            ssse3: std::arch::is_x86_feature_detected!("ssse3"),
+            sse41: std::arch::is_x86_feature_detected!("sse4.1"),
+            sse42: std::arch::is_x86_feature_detected!("sse4.2"),
+            avx: std::arch::is_x86_feature_detected!("avx"),
+            avx_vnni: std::arch::is_x86_feature_detected!("avxvnni"),
+            avx2: std::arch::is_x86_feature_detected!("avx2"),
+            fma: std::arch::is_x86_feature_detected!("fma"),
+            f16c: std::arch::is_x86_feature_detected!("f16c"),
+            bmi2: std::arch::is_x86_feature_detected!("bmi2"),
+            avx512: has_avx512_base,
+            avx512_vbmi: std::arch::is_x86_feature_detected!("avx512vbmi"),
+            avx512_vnni: std::arch::is_x86_feature_detected!("avx512vnni"),
+            avx512_bf16: std::arch::is_x86_feature_detected!("avx512bf16"),
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        CompiledX86SimdFeatures::portable_x86_64_v1()
+    }
+}
+
+/// Compares the SIMD instruction sets required by the compiled `ggml-cpu` library against
+/// the host CPU's runtime capabilities, returning a descriptive `AiError::ApiError` instead
+/// of allowing an unrecoverable `SIGILL` trap if any required feature is missing.
+pub fn check_x86_simd_requirements(
+    required: CompiledX86SimdFeatures,
+    detected: CompiledX86SimdFeatures,
+) -> Result<(), AiError> {
+    let mut missing = Vec::new();
+    if required.sse3 && !detected.sse3 {
+        missing.push("SSE3");
+    }
+    if required.ssse3 && !detected.ssse3 {
+        missing.push("SSSE3");
+    }
+    if required.sse41 && !detected.sse41 {
+        missing.push("SSE4.1");
+    }
+    if required.sse42 && !detected.sse42 {
+        missing.push("SSE4.2");
+    }
+    if required.avx && !detected.avx {
+        missing.push("AVX");
+    }
+    if required.avx_vnni && !detected.avx_vnni {
+        missing.push("AVX_VNNI");
+    }
+    if required.avx2 && !detected.avx2 {
+        missing.push("AVX2");
+    }
+    if required.fma && !detected.fma {
+        missing.push("FMA");
+    }
+    if required.f16c && !detected.f16c {
+        missing.push("F16C");
+    }
+    if required.bmi2 && !detected.bmi2 {
+        missing.push("BMI2");
+    }
+    if required.avx512 && !detected.avx512 {
+        missing.push("AVX512F");
+    }
+    if required.avx512_vbmi && !detected.avx512_vbmi {
+        missing.push("AVX512_VBMI");
+    }
+    if required.avx512_vnni && !detected.avx512_vnni {
+        missing.push("AVX512_VNNI");
+    }
+    if required.avx512_bf16 && !detected.avx512_bf16 {
+        missing.push("AVX512_BF16");
+    }
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(AiError::ApiError(format!(
+            "Local Whisper engine requires CPU instruction set(s) [{}] not supported by this processor. Switch to a Cloud AI provider or rebuild with GGML_AVX2=OFF.",
+            missing.join(", ")
+        )))
+    }
+}
+
+/// Verifies at runtime that the host CPU supports all SIMD instruction sets compiled into
+/// `libggml-cpu.a` before invoking `WhisperContext::new_with_params` (preventing `SIGILL`
+/// on pre-2013 non-AVX2 x86_64 CPUs or restricted VMs).
+pub fn verify_cpu_simd_compatibility() -> Result<(), AiError> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        let required = compiled_x86_simd_features();
+        let detected = detected_x86_simd_features();
+        check_x86_simd_requirements(required, detected)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        Ok(())
+    }
+}
+
+/// Pure decision helper determining whether the portable launcher binary should dispatch
+/// via `execv` to its sibling `opendictate-avx2` binary.
+pub fn should_dispatch_to_avx2_binary(
+    compiled_self: CompiledX86SimdFeatures,
+    detected_cpu: CompiledX86SimdFeatures,
+    already_dispatched: bool,
+    disable_dispatch: bool,
+    candidate_exists_and_executable: bool,
+) -> bool {
+    if compiled_self.avx2 || already_dispatched || disable_dispatch || !candidate_exists_and_executable {
+        return false;
+    }
+    check_x86_simd_requirements(CompiledX86SimdFeatures::avx2_optimized_tier(), detected_cpu)
+        .is_ok()
+}
+
+/// Resolves the expected sibling path for `opendictate-avx2` next to `current_exe`,
+/// returning `None` if `current_exe` is already named `opendictate-avx2`.
+pub fn resolve_avx2_sibling_path(current_exe: &Path) -> Option<PathBuf> {
+    let file_name = current_exe.file_name()?.to_str()?;
+    if file_name == "opendictate-avx2" {
+        return None;
+    }
+    Some(current_exe.parent()?.join("opendictate-avx2"))
+}
+
+/// Returns `true` if `path` exists as a regular file and has at least one execute permission bit set.
+pub fn is_executable_file(path: &Path) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        (meta.permissions().mode() & 0o111) != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+/// If running inside the portable (`x86-64-v1` / `SSE2`) launcher binary on an x86_64 CPU
+/// that supports the full `opendictate-avx2` instruction tier (`SSE4.1`, `SSE4.2`, `AVX`,
+/// `AVX2`, `FMA`, `F16C`, `BMI2`), replaces the current process image in-place with the
+/// sibling `opendictate-avx2` executable while preserving all command-line arguments and environment.
+///
+/// Falls back cleanly by returning to the caller if the CPU lacks any required instruction,
+/// `OPENDICTATE_DISABLE_AVX2_DISPATCH=1` is set, `opendictate-avx2` is missing/non-executable,
+/// or `execv` fails.
+pub fn try_exec_avx2_sibling() {
+    #[cfg(all(target_arch = "x86_64", unix))]
+    {
+        let already_dispatched = matches!(
+            std::env::var("OPENDICTATE_DISPATCHED_AVX2").as_deref(),
+            Ok("1" | "true" | "TRUE")
+        );
+        let disable_dispatch = matches!(
+            std::env::var("OPENDICTATE_DISABLE_AVX2_DISPATCH").as_deref(),
+            Ok("1" | "true" | "TRUE")
+        );
+        let current_exe = std::env::current_exe().ok();
+        let candidate = current_exe
+            .as_deref()
+            .and_then(resolve_avx2_sibling_path);
+        let candidate_executable = candidate.as_deref().is_some_and(is_executable_file);
+        let compiled_self = compiled_x86_simd_features();
+        let detected_cpu = detected_x86_simd_features();
+
+        if should_dispatch_to_avx2_binary(
+            compiled_self,
+            detected_cpu,
+            already_dispatched,
+            disable_dispatch,
+            candidate_executable,
+        ) && let Some(avx2_path) = candidate
+        {
+            use std::os::unix::process::CommandExt;
+            let err = std::process::Command::new(&avx2_path)
+                .args(std::env::args_os().skip(1))
+                .env("OPENDICTATE_DISPATCHED_AVX2", "1")
+                .exec();
+            eprintln!(
+                "OpenDictate notice: failed to dispatch to {:?} ({}); continuing with portable baseline binary.",
+                avx2_path, err
+            );
+        }
+    }
+}
+
 
 /// Local AI Provider implementing `AiProvider` via embedded speech engine.
 pub struct LocalAiProvider {
@@ -406,7 +723,7 @@ impl LocalAiProvider {
                 .filter(|m| !m.trim().is_empty())
                 .unwrap_or_else(|| "tiny.en".to_string()),
             custom_path: None,
-            threads: 4,
+            threads: 0,
         }
     }
 
@@ -437,42 +754,62 @@ impl LocalAiProvider {
         if samples.is_empty() {
             return Ok(String::new());
         }
+        verify_cpu_simd_compatibility()?;
 
         let path_str = model_path
             .to_str()
             .ok_or_else(|| AiError::ApiError(format!("Invalid model path: {:?}", model_path)))?;
 
-        type CachedWhisperCtx = (String, std::sync::Arc<local_speech_engine::WhisperContext>);
-        static CACHED_CTX: std::sync::OnceLock<std::sync::Mutex<Option<CachedWhisperCtx>>> =
+        struct CachedWhisperEngine {
+            path: String,
+            _ctx: std::sync::Arc<local_speech_engine::WhisperContext>,
+            state: std::sync::Arc<std::sync::Mutex<local_speech_engine::WhisperState>>,
+        }
+        static CACHED_ENGINE: std::sync::OnceLock<std::sync::Mutex<Option<CachedWhisperEngine>>> =
             std::sync::OnceLock::new();
 
-        let ctx = {
-            let cache_mutex = CACHED_CTX.get_or_init(|| std::sync::Mutex::new(None));
+        let state_arc = {
+            let cache_mutex = CACHED_ENGINE.get_or_init(|| std::sync::Mutex::new(None));
             let mut guard = cache_mutex
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if let Some((ref cached_path, ref cached_arc)) = *guard
-                && cached_path == path_str
+            if let Some(ref cached) = *guard
+                && cached.path == path_str
             {
-                std::sync::Arc::clone(cached_arc)
+                std::sync::Arc::clone(&cached.state)
             } else {
-                let loaded = std::sync::Arc::new(
-                    local_speech_engine::WhisperContext::new_with_params(
-                        path_str,
-                        Default::default(),
-                    )
-                    .map_err(|e| {
-                        AiError::ApiError(format!("Local speech engine context error: {}", e))
-                    })?,
+                let mut ctx_params = local_speech_engine::WhisperContextParameters::default();
+                if let Ok(use_gpu_str) = std::env::var("OPENDICTATE_USE_GPU") {
+                    ctx_params.use_gpu(use_gpu_str != "0" && !use_gpu_str.eq_ignore_ascii_case("false"));
+                }
+                if let Ok(dev_str) = std::env::var("OPENDICTATE_GPU_DEVICE")
+                    && let Ok(dev_id) = dev_str.parse::<i32>()
+                {
+                    ctx_params.gpu_device(dev_id);
+                }
+                let loaded_ctx = std::sync::Arc::new(
+                    local_speech_engine::WhisperContext::new_with_params(path_str, ctx_params)
+                        .map_err(|e| {
+                            AiError::ApiError(format!("Local speech engine context error: {}", e))
+                        })?,
                 );
-                *guard = Some((path_str.to_string(), std::sync::Arc::clone(&loaded)));
-                loaded
+                let loaded_state = std::sync::Arc::new(std::sync::Mutex::new(
+                    loaded_ctx.create_state().map_err(|e| {
+                        AiError::ApiError(format!("Local speech engine state error: {}", e))
+                    })?,
+                ));
+                *guard = Some(CachedWhisperEngine {
+                    path: path_str.to_string(),
+                    _ctx: loaded_ctx,
+                    state: std::sync::Arc::clone(&loaded_state),
+                });
+                loaded_state
             }
         };
 
-        let mut state = ctx
-            .create_state()
-            .map_err(|e| AiError::ApiError(format!("Local speech engine state error: {}", e)))?;
+        let mut state = state_arc
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let mut params =
             local_speech_engine::FullParams::new(local_speech_engine::SamplingStrategy::Greedy {
@@ -480,13 +817,22 @@ impl LocalAiProvider {
             });
         let effective_threads = if threads == 0 {
             std::thread::available_parallelism()
-                .map(|n| n.get() as i32)
-                .unwrap_or(4)
-                .clamp(1, 8)
+                .map(|n| {
+                    let logical = n.get();
+                    if logical >= 12 {
+                        6
+                    } else if logical >= 8 {
+                        (logical / 2).clamp(4, 6)
+                    } else {
+                        logical.clamp(1, 6)
+                    }
+                })
+                .unwrap_or(4) as i32
         } else {
             threads.max(1) as i32
         };
         params.set_n_threads(effective_threads);
+        params.set_no_context(true);
         params.set_print_special(false);
         params.set_print_progress(false);
         params.set_print_realtime(false);
@@ -496,8 +842,25 @@ impl LocalAiProvider {
         params.set_no_speech_thold(0.6);
         params.set_entropy_thold(2.4);
         params.set_logprob_thold(-1.0);
+        let temp_inc = std::env::var("OPENDICTATE_TEMP_INC")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(0.0);
+        params.set_temperature_inc(temp_inc);
 
-        if samples.len() < 400_000 {
+        let no_timestamps = match std::env::var("OPENDICTATE_NO_TIMESTAMPS").as_deref() {
+            Ok("1") => true,
+            Ok("0") => false,
+            _ => samples.len() > 80_000 && samples.len() <= 480_000,
+        };
+        if no_timestamps {
+            params.set_no_timestamps(true);
+        }
+
+        let use_dynamic_audio_ctx = std::env::var("OPENDICTATE_AUDIO_CTX")
+            .map(|v| v != "0" && !v.eq_ignore_ascii_case("full"))
+            .unwrap_or(true);
+        if use_dynamic_audio_ctx && samples.len() < 400_000 {
             let raw_ctx = ((samples.len() as f32 / 480_000.0) * 1500.0).ceil() as i32 + 128;
             let aligned_ctx = ((raw_ctx + 63) / 64 * 64).clamp(512, 1500);
             params.set_audio_ctx(aligned_ctx);
@@ -507,7 +870,9 @@ impl LocalAiProvider {
             .file_name()
             .and_then(|f| f.to_str())
             .unwrap_or("");
-        let is_english_model = filename.contains(".en.") || filename.ends_with(".en.bin");
+        let is_english_model = filename.contains(".en.")
+            || filename.contains(".en-")
+            || filename.ends_with(".en.bin");
 
         if let Some(lang) = language {
             let trimmed = lang.trim();
@@ -562,22 +927,15 @@ impl LocalAiProvider {
     ) -> Result<String, AiError> {
         Self::transcribe_wav_samples_with_options(samples, model_path, threads, None, None)
     }
-}
 
-impl Default for LocalAiProvider {
-    fn default() -> Self {
-        Self::new(None)
-    }
-}
-
-#[async_trait]
-impl AiProvider for LocalAiProvider {
-    async fn transcribe(
+    /// Asynchronously transcribes pre-normalized 16kHz `f32` audio samples directly
+    /// without WAV encoding/decoding overhead.
+    pub async fn transcribe_samples(
         &self,
-        audio_wav: Vec<u8>,
+        samples: Vec<f32>,
         system_prompt: Option<&str>,
     ) -> Result<String, AiError> {
-        if audio_wav.is_empty() {
+        if samples.is_empty() {
             return Ok(String::new());
         }
 
@@ -587,11 +945,6 @@ impl AiProvider for LocalAiProvider {
                 "Local model '{}' not installed. Please download it in Settings.",
                 self.model_id
             )));
-        }
-
-        let samples = decode_wav_to_f32(&audio_wav)?;
-        if samples.is_empty() {
-            return Ok(String::new());
         }
 
         let threads = self.threads;
@@ -613,6 +966,39 @@ impl AiProvider for LocalAiProvider {
         })
         .await
         .map_err(|e| AiError::ApiError(format!("Local speech engine thread join error: {}", e)))?
+    }
+}
+
+impl Default for LocalAiProvider {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
+#[async_trait]
+impl AiProvider for LocalAiProvider {
+    async fn transcribe(
+        &self,
+        audio_wav: Vec<u8>,
+        system_prompt: Option<&str>,
+    ) -> Result<String, AiError> {
+        if audio_wav.is_empty() {
+            return Ok(String::new());
+        }
+
+        if !is_model_installed(&self.model_id, self.custom_path.as_deref()) {
+            return Err(AiError::ApiError(format!(
+                "Local model '{}' not installed. Please download it in Settings.",
+                self.model_id
+            )));
+        }
+
+        let samples = decode_wav_to_f32(&audio_wav)?;
+        if samples.is_empty() {
+            return Ok(String::new());
+        }
+
+        self.transcribe_samples(samples, system_prompt).await
     }
 
     async fn enhance(&self, text: &str, tone: &str) -> Result<String, AiError> {

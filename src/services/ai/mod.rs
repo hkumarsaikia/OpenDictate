@@ -22,6 +22,11 @@ pub mod opencode;
 pub mod openrouter;
 pub mod utils;
 
+pub use local_ai::{
+    CompiledX86SimdFeatures, check_x86_simd_requirements, compiled_x86_simd_features,
+    detected_x86_simd_features, is_executable_file, resolve_avx2_sibling_path,
+    should_dispatch_to_avx2_binary, try_exec_avx2_sibling, verify_cpu_simd_compatibility,
+};
 pub use utils::{
     apply_smart_local_formatting, format_enhancement_prompt, is_transient_ai_error, redact_secrets,
 };
@@ -2356,7 +2361,7 @@ impl AiManager {
                     cfg.local_threads,
                 )
             } else {
-                ("tiny.en".to_string(), None, 4)
+                ("tiny.en".to_string(), None, 0)
             };
             let provider = local_ai::LocalAiProvider::with_config(model_id, custom_path, threads);
             return provider.transcribe(audio_wav.to_vec(), None).await;
@@ -2391,6 +2396,31 @@ impl AiManager {
             }
             Err(e) => Err(self.redact_error(e)),
         }
+    }
+
+    /// Transcribes pre-normalized 16kHz `f32` audio samples directly when in local AI mode,
+    /// avoiding redundant `f32 -> 16-bit WAV -> f32` round-trip encoding and decoding.
+    pub async fn transcribe_samples_16k(&self, samples_16k: Vec<f32>) -> Result<String, AiError> {
+        if samples_16k.is_empty() {
+            return Ok(String::new());
+        }
+        if self.active_mode() == "local" {
+            let (model_id, custom_path, threads) = if let Some(ref cfg) = self.config {
+                (
+                    cfg.local_model_id.clone(),
+                    cfg.local_custom_path.clone(),
+                    cfg.local_threads,
+                )
+            } else {
+                ("tiny.en".to_string(), None, 0)
+            };
+            let provider = local_ai::LocalAiProvider::with_config(model_id, custom_path, threads);
+            return provider.transcribe_samples(samples_16k, None).await;
+        }
+
+        let wav_bytes = crate::audio::recorder::encode_pcm_wav(&samples_16k, 16000)
+            .map_err(|e| AiError::AudioEncodingError(e.to_string()))?;
+        self.transcribe(&wav_bytes).await
     }
 
     /// Enhances text with tone transformation using the currently configured provider.

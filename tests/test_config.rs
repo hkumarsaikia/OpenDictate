@@ -71,7 +71,10 @@ fn test_config_dual_engine_fields() {
     assert_eq!(config.ai_mode, "cloud");
     assert_eq!(config.local_model_id, "tiny.en");
     assert_eq!(config.local_custom_path, None);
-    assert_eq!(config.local_threads, 4);
+    assert_eq!(
+        config.local_threads, 0,
+        "Default local_threads must be 0 (Auto/System Default)"
+    );
 
     config.ai_mode = "local".to_string();
     config.local_model_id = "base.en".to_string();
@@ -87,6 +90,16 @@ fn test_config_dual_engine_fields() {
         Some("/opt/models/model.bin".to_string())
     );
     assert_eq!(deserialized.local_threads, 6);
+
+    // Existing user config with explicit local_threads (e.g. 4 or 8) must be preserved
+    let dir = tempdir().expect("tempdir");
+    let existing_user_path = dir.path().join("existing_user.json");
+    fs::write(&existing_user_path, r#"{"local_threads": 4}"#).expect("write existing_user.json");
+    let loaded_existing = Config::load_from(&existing_user_path).expect("load existing_user.json");
+    assert_eq!(
+        loaded_existing.local_threads, 4,
+        "Explicitly configured user local_threads must be preserved"
+    );
 }
 
 #[test]

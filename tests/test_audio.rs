@@ -698,3 +698,183 @@ Card #51
         }
     }
 }
+
+#[test]
+fn test_wireplumber_wpctl_parsing_and_profile_routing() {
+    let mock_wpctl_status = r#"
+PipeWire 'pipewire-0' [1.6.2, user@host, cookie:12345]
+ └─ Clients:
+        33. WirePlumber                         [1.6.2, user@host, pid:100]
+
+Audio
+ ├─ Devices:
+ │      49. Renoir/Cezanne HDMI/DP Audio Controller [alsa]
+ │      50. Ryzen HD Audio Controller           [alsa]
+ │      68. Stone 250                           [bluez5]
+ │      80. Plantronics Blackwire USB Headset   [alsa]
+ │  
+ ├─ Sinks:
+ │      57. Ryzen HD Audio Controller Analog Stereo [vol: 0.77]
+ │  *   70. Stone 250                           [vol: 0.35]
+ │  
+ ├─ Sources:
+ │      58. Ryzen HD Audio Controller Analog Stereo [vol: 0.55]
+ │  *   69. Stone 250                           [vol: 1.00]
+ │      81. Plantronics Blackwire USB Headset   [vol: 0.60]
+ │  
+ ├─ Filters:
+ │  
+ └─ Streams:
+
+Video
+ ├─ Devices:
+ │      41. Integrated Camera                   [v4l2]
+"#;
+
+    let mock_inspect = |id: u32| -> String {
+        match id {
+            58 => r#"
+id 58, type PipeWire:Interface:Node
+    alsa.card_name = "HD-Audio Generic"
+    device.api = "alsa"
+    device.bus = "pci"
+    media.class = "Audio/Source"
+    node.description = "Ryzen HD Audio Controller Analog Stereo"
+    node.name = "alsa_input.pci-0000_05_00.6.analog-stereo"
+"#
+            .to_string(),
+            69 => r#"
+id 69, type PipeWire:Interface:Node
+    api.bluez5.codec = "msbc"
+    device.api = "bluez5"
+    media.class = "Audio/Source"
+    node.description = "Stone 250"
+    node.name = "bluez_input.E2_FF_29_2B_1F_E9.0"
+"#
+            .to_string(),
+            81 => r#"
+id 81, type PipeWire:Interface:Node
+    device.api = "alsa"
+    device.bus = "usb"
+    media.class = "Audio/Source"
+    node.description = "Plantronics Blackwire USB Headset"
+    node.name = "alsa_input.usb-Plantronics_Blackwire-00.analog-stereo"
+"#
+            .to_string(),
+            _ => String::new(),
+        }
+    };
+
+    let sources = AudioRecorder::parse_wpctl_sources(mock_wpctl_status, mock_inspect);
+    assert_eq!(
+        sources.len(),
+        3,
+        "Must parse exactly 3 audio sources from mock status"
+    );
+
+    // Check Source 58
+    assert_eq!(sources[0].id, 58);
+    assert!(!sources[0].is_default);
+    assert_eq!(
+        sources[0].node_name,
+        "alsa_input.pci-0000_05_00.6.analog-stereo"
+    );
+    assert_eq!(sources[0].device_bus, "pci");
+    assert_eq!(sources[0].volume, Some(0.55));
+
+    // Check Source 69 (marked with * default)
+    assert_eq!(sources[1].id, 69);
+    assert!(sources[1].is_default);
+    assert_eq!(sources[1].node_name, "bluez_input.E2_FF_29_2B_1F_E9.0");
+    assert_eq!(sources[1].device_api, "bluez5");
+    assert_eq!(sources[1].volume, Some(1.00));
+
+    // Check Source 81 (USB headset)
+    assert_eq!(sources[2].id, 81);
+    assert_eq!(
+        sources[2].node_name,
+        "alsa_input.usb-Plantronics_Blackwire-00.analog-stereo"
+    );
+    assert_eq!(sources[2].device_bus, "usb");
+
+    // Profile classification: when Bluetooth source is present, classifies as Handsfree
+    let profile = AudioRecorder::classify_hardware_profile_from_wpctl_sources(&sources);
+    assert_eq!(profile, "Handsfree");
+
+    // Profile classification when only built-in is present -> System Default
+    let internal_only = vec![sources[0].clone()];
+    assert_eq!(
+        AudioRecorder::classify_hardware_profile_from_wpctl_sources(&internal_only),
+        "System Default"
+    );
+
+    // Profile classification when only USB headset is present -> Headphones
+    let headset_only = vec![sources[0].clone(), sources[2].clone()];
+    assert_eq!(
+        AudioRecorder::classify_hardware_profile_from_wpctl_sources(&headset_only),
+        "Headphones"
+    );
+
+    // Exclusive source routing for "System Default":
+    // Must select internal PCI mic (Node 58) even though Bluetooth Node 69 is marked default!
+    let target_default =
+        AudioRecorder::resolve_exclusive_source_from_wpctl("System Default", &sources)
+            .expect("System Default must resolve");
+    assert_eq!(
+        target_default.id, 58,
+        "System Default must resolve internal PCI microphone, not silent Bluetooth default"
+    );
+    assert_eq!(
+        target_default.node_name,
+        "alsa_input.pci-0000_05_00.6.analog-stereo"
+    );
+
+    // Exclusive source routing for "Handsfree":
+    let target_hf = AudioRecorder::resolve_exclusive_source_from_wpctl("Handsfree", &sources)
+        .expect("Handsfree must resolve");
+    assert_eq!(target_hf.id, 69);
+    assert_eq!(target_hf.node_name, "bluez_input.E2_FF_29_2B_1F_E9.0");
+
+    // Exclusive source routing for "Headphones":
+    let target_hp = AudioRecorder::resolve_exclusive_source_from_wpctl("Headphones", &sources)
+        .expect("Headphones must resolve");
+    assert_eq!(target_hp.id, 81);
+    assert_eq!(
+        target_hp.node_name,
+        "alsa_input.usb-Plantronics_Blackwire-00.analog-stereo"
+    );
+
+    // Custom named matching:
+    let target_custom = AudioRecorder::resolve_exclusive_source_from_wpctl("58", &sources)
+        .expect("Custom ID 58 must resolve");
+    assert_eq!(target_custom.id, 58);
+}
+
+#[tokio::test]
+async fn test_live_system_default_microphone_routing() {
+    let mut recorder = AudioRecorder::new(Some("System Default".to_string()))
+        .expect("failed to create AudioRecorder for System Default");
+    let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+    recorder
+        .start_recording(tx)
+        .expect("start_recording must succeed on live host");
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let mut levels = Vec::new();
+    while let Ok(level) = rx.try_recv() {
+        levels.push(level);
+    }
+    let (samples, _) = recorder
+        .stop_recording_samples_16k(None)
+        .expect("stop_recording succeeded");
+    println!(
+        "Live System Default test: captured {} samples, received {} level frames",
+        samples.len(),
+        levels.len()
+    );
+    assert!(
+        !samples.is_empty(),
+        "Live recording from System Default must capture non-empty samples"
+    );
+}
+
+

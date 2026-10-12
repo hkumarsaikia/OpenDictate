@@ -209,6 +209,68 @@ pub fn normalize_speech_samples(samples: &[f32]) -> Vec<f32> {
     centered
 }
 
+fn frame_has_voice_energy(frame: &[f32]) -> bool {
+    if frame.is_empty() {
+        return false;
+    }
+    let mean = frame.iter().copied().sum::<f32>() / frame.len() as f32;
+    let mut sum_sq = 0.0f32;
+    let mut peak = 0.0f32;
+    for &x in frame {
+        let d = x - mean;
+        let a = d.abs();
+        if a > peak {
+            peak = a;
+        }
+        sum_sq += d * d;
+    }
+    let rms = (sum_sq / frame.len() as f32).sqrt();
+    rms >= 0.0008 && peak >= 0.002
+}
+
+/// Returns true if any 20ms short-time window (with 10ms hop) at `sample_rate` contains
+/// above-threshold voice energy (`rms >= 0.0008` and `peak >= 0.002`, matching
+/// `normalize_speech_samples`), preventing surrounding silence from diluting short speech
+/// onsets or brief words spoken after long pauses.
+pub fn has_voice_activity_at_rate(samples: &[f32], sample_rate: u32) -> bool {
+    if samples.is_empty() {
+        return false;
+    }
+    let frame_len = ((sample_rate.max(8_000) as usize) * 20 / 1_000).max(160);
+    if samples.len() <= frame_len {
+        return frame_has_voice_energy(samples);
+    }
+    let step = (frame_len / 2).max(1);
+    let mut offset = 0usize;
+    while offset + frame_len <= samples.len() {
+        if frame_has_voice_energy(&samples[offset..offset + frame_len]) {
+            return true;
+        }
+        offset += step;
+    }
+    if offset < samples.len() {
+        let tail_start = samples.len() - frame_len;
+        if frame_has_voice_energy(&samples[tail_start..]) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Returns true if any 20ms short-time window (at 16 kHz default reference rate) contains
+/// above-threshold voice energy (`rms >= 0.0008` and `peak >= 0.002`).
+pub fn has_voice_activity(samples: &[f32]) -> bool {
+    has_voice_activity_at_rate(samples, 16_000)
+}
+
+/// Snapshot of normalized 16kHz `f32` audio samples for zero-WAV-copy local streaming inference.
+pub struct StreamingSampleSnapshot {
+    pub samples_16k: Vec<f32>,
+    pub total_native_samples: usize,
+    pub delta_has_voice: bool,
+    pub tail_is_quiet: bool,
+}
+
 /// Non-destructive live snapshot handle for streaming transcription while recording is active.
 #[derive(Clone)]
 pub struct AudioBufferSnapshot {
@@ -247,17 +309,7 @@ impl AudioBufferSnapshot {
             (buf[start..].to_vec(), total)
         };
 
-        let mean = window.iter().copied().sum::<f32>() / window.len() as f32;
-        let rms = (window
-            .iter()
-            .map(|&x| {
-                let d = x - mean;
-                d * d
-            })
-            .sum::<f32>()
-            / window.len() as f32)
-            .sqrt();
-        if rms < 0.0015 {
+        if !has_voice_activity_at_rate(&window, native_rate) {
             return Ok(None);
         }
 
@@ -265,6 +317,57 @@ impl AudioBufferSnapshot {
         let normalized = normalize_speech_samples(&resampled);
         let wav = encode_pcm_wav(&normalized, 16000)?;
         Ok(Some((wav, total_len)))
+    }
+
+    /// Captures a non-destructive 16kHz `f32` snapshot for local Whisper streaming inference
+    /// without WAV encoding/decoding overhead, and returns `Ok(None)` when new samples since
+    /// `prev_total_samples` are silent and a post-speech finalization pass (`prev_finalized == true`)
+    /// has already completed, ensuring `prev_total_samples` is never advanced past untranscribed audio.
+    pub fn snapshot_samples_16k(
+        &self,
+        max_seconds: f32,
+        prev_total_samples: usize,
+        prev_finalized: bool,
+    ) -> Result<Option<StreamingSampleSnapshot>, AudioError> {
+        if self.is_paused.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
+        let native_rate = self.sample_rate.load(Ordering::SeqCst).max(8000);
+        let min_samples = ((native_rate as f32) * 0.40) as usize;
+        let max_samples = ((native_rate as f32) * max_seconds.max(2.0)) as usize;
+        let quiet_tail_len = ((native_rate as f32) * 0.20) as usize;
+
+        let (window, total_len, delta_has_voice, tail_is_quiet) = {
+            let Ok(buf) = self.buffer.lock() else {
+                return Ok(None);
+            };
+            let total = buf.len();
+            if total < min_samples || total <= prev_total_samples {
+                return Ok(None);
+            }
+            let delta = &buf[prev_total_samples.min(total)..];
+            let delta_voice = has_voice_activity_at_rate(delta, native_rate);
+            if !delta_voice && prev_finalized {
+                return Ok(None);
+            }
+            let tail_start = total.saturating_sub(quiet_tail_len);
+            let tail_quiet = !has_voice_activity_at_rate(&buf[tail_start..], native_rate);
+            let start = total.saturating_sub(max_samples);
+            (buf[start..].to_vec(), total, delta_voice, tail_quiet)
+        };
+
+        if !has_voice_activity_at_rate(&window, native_rate) {
+            return Ok(None);
+        }
+
+        let resampled = resample_to_16k(&window, native_rate)?;
+        let normalized = normalize_speech_samples(&resampled);
+        Ok(Some(StreamingSampleSnapshot {
+            samples_16k: normalized,
+            total_native_samples: total_len,
+            delta_has_voice,
+            tail_is_quiet,
+        }))
     }
 }
 
@@ -455,6 +558,66 @@ ctl.pulse {
 #[cfg(not(target_os = "linux"))]
 pub fn silence_alsa_logging() {}
 
+/// Detailed information for a PipeWire/WirePlumber audio source node discovered via `wpctl status` and `wpctl inspect`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct WpctlSource {
+    pub id: u32,
+    pub is_default: bool,
+    pub description: String,
+    pub volume: Option<f32>,
+    pub is_muted: bool,
+    pub node_name: String,
+    pub device_api: String,
+    pub device_bus: String,
+    pub media_class: String,
+}
+
+fn resolve_wpctl_binary() -> Option<String> {
+    silence_alsa_logging();
+    for env_key in ["SNAP", "APPDIR"] {
+        if let Ok(root) = std::env::var(env_key) {
+            let candidate = format!("{}/usr/bin/wpctl", root.trim_end_matches('/'));
+            if std::path::Path::new(&candidate).exists() {
+                return Some(candidate);
+            }
+        }
+    }
+    if let Ok(output) = std::process::Command::new("wpctl").arg("--version").output()
+        && output.status.success()
+    {
+        return Some("wpctl".to_string());
+    }
+    for p in ["/usr/bin/wpctl", "/bin/wpctl", "/usr/local/bin/wpctl"] {
+        if std::path::Path::new(p).exists() {
+            return Some(p.to_string());
+        }
+    }
+    None
+}
+
+fn run_wpctl_stdout(args: &[&str]) -> String {
+    let Some(bin) = resolve_wpctl_binary() else {
+        return String::new();
+    };
+    std::process::Command::new(bin)
+        .args(args)
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default()
+}
+
+fn run_wpctl_status(args: &[&str]) -> bool {
+    let Some(bin) = resolve_wpctl_binary() else {
+        return false;
+    };
+    std::process::Command::new(bin)
+        .args(args)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 fn resolve_pactl_binary() -> String {
     silence_alsa_logging();
     for env_key in ["SNAP", "APPDIR"] {
@@ -498,6 +661,284 @@ fn resolve_available_port_for_source(
 }
 
 impl AudioRecorder {
+    /// Parses audio source nodes from `wpctl status` and inspect properties via `inspect_fn`,
+    /// excluding monitor sinks and video nodes so capture only connects to genuine microphone inputs.
+    pub fn parse_wpctl_sources(
+        status_output: &str,
+        inspect_fn: impl Fn(u32) -> String,
+    ) -> Vec<WpctlSource> {
+        let mut sources = Vec::new();
+        let mut in_audio = false;
+        let mut in_sources = false;
+
+        for line in status_output.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            if trimmed == "Audio" || trimmed.starts_with("Audio ") {
+                in_audio = true;
+                in_sources = false;
+                continue;
+            }
+
+            if trimmed == "Video"
+                || trimmed.starts_with("Video ")
+                || trimmed == "Settings"
+                || trimmed.starts_with("Settings ")
+            {
+                in_audio = false;
+                in_sources = false;
+                continue;
+            }
+
+            if in_audio {
+                if trimmed.contains("Sources:") {
+                    in_sources = true;
+                    continue;
+                }
+                if in_sources
+                    && (trimmed.contains("Filters:")
+                        || trimmed.contains("Streams:")
+                        || trimmed.contains("Sinks:")
+                        || trimmed.contains("Devices:"))
+                {
+                    in_sources = false;
+                    continue;
+                }
+            }
+
+            if !in_sources {
+                continue;
+            }
+
+            // A source line typically looks like:
+            //   " │      58. Ryzen HD Audio Controller Analog Stereo [vol: 0.55]"
+            //   " │  *   69. Stone 250                           [vol: 1.00]"
+            let is_default = line.contains('*');
+            let is_muted = line.contains("MUTED");
+
+            let mut node_id = None;
+            let mut id_token = "";
+            for word in line.split_whitespace() {
+                if let Some(num_candidate) = word.strip_suffix('.')
+                    && let Ok(val) = num_candidate.parse::<u32>()
+                {
+                    node_id = Some(val);
+                    id_token = word;
+                    break;
+                }
+            }
+
+            let Some(id) = node_id else {
+                continue;
+            };
+
+            // Extract description and volume
+            let mut description = String::new();
+            let mut volume = None;
+
+            if let Some(pos) = line.find(id_token) {
+                let rest = line[pos + id_token.len()..].trim();
+                let (raw_desc, bracket_part) = if let Some(bracket_idx) = rest.find('[') {
+                    (&rest[..bracket_idx], Some(&rest[bracket_idx..]))
+                } else {
+                    (rest, None)
+                };
+
+                description = raw_desc.trim().to_string();
+
+                if let Some(bracket) = bracket_part
+                    && let Some(vol_idx) = bracket.find("vol:")
+                {
+                    let after_vol = &bracket[vol_idx + 4..];
+                    if let Some(token) = after_vol.split_whitespace().next() {
+                        let clean_token = token.trim_end_matches(']').trim_end_matches(',');
+                        if let Some(pct_str) = clean_token.strip_suffix('%') {
+                            if let Ok(pct) = pct_str.parse::<f32>() {
+                                volume = Some(pct / 100.0);
+                            }
+                        } else if let Ok(val) = clean_token.parse::<f32>() {
+                            volume = Some(val);
+                        }
+                    }
+                }
+            }
+
+            // Inspect the node
+            let inspect_output = inspect_fn(id);
+            let mut node_name = String::new();
+            let mut device_api = String::new();
+            let mut device_bus = String::new();
+            let mut media_class = String::new();
+            let mut node_desc = String::new();
+
+            for insp_line in inspect_output.lines() {
+                let t = insp_line.trim().trim_start_matches('*').trim();
+                if let Some((k, v)) = t.split_once('=') {
+                    let key = k.trim();
+                    let val = v.trim().trim_matches('"').trim();
+                    match key {
+                        "node.name" => node_name = val.to_string(),
+                        "device.api" => device_api = val.to_string(),
+                        "device.bus" => device_bus = val.to_string(),
+                        "media.class" => media_class = val.to_string(),
+                        "node.description" => node_desc = val.to_string(),
+                        _ => {}
+                    }
+                }
+            }
+
+            if description.is_empty() && !node_desc.is_empty() {
+                description = node_desc;
+            }
+
+            // If media.class was inspected, only accept Audio/Source (skip Audio/Sink or Video/Source)
+            if !media_class.is_empty() && media_class != "Audio/Source" {
+                continue;
+            }
+
+            // Also skip obvious monitor names if node_name ends with .monitor
+            if node_name.ends_with(".monitor") {
+                continue;
+            }
+
+            sources.push(WpctlSource {
+                id,
+                is_default,
+                description,
+                volume,
+                is_muted,
+                node_name,
+                device_api,
+                device_bus,
+                media_class,
+            });
+        }
+
+        sources
+    }
+
+    /// Classifies the currently connected microphone hardware profile from a slice of `WpctlSource`s
+    /// (`"Handsfree"`, `"Headphones"`, or `"System Default"`).
+    pub fn classify_hardware_profile_from_wpctl_sources(sources: &[WpctlSource]) -> &'static str {
+        let is_bluetooth = |s: &WpctlSource| -> bool {
+            s.device_api == "bluez5"
+                || s.device_bus == "bluetooth"
+                || s.node_name.to_lowercase().starts_with("bluez_")
+                || s.description.to_lowercase().contains("bluetooth")
+        };
+
+        let is_headset = |s: &WpctlSource| -> bool {
+            s.device_bus == "usb"
+                || s.node_name.to_lowercase().starts_with("alsa_input.usb-")
+                || s.description.to_lowercase().contains("headset")
+                || s.description.to_lowercase().contains("headphone")
+        };
+
+        if sources.iter().any(is_bluetooth) {
+            return "Handsfree";
+        }
+
+        if sources.iter().any(is_headset) {
+            return "Headphones";
+        }
+
+        "System Default"
+    }
+
+    /// Resolves the single exclusive PipeWire/WirePlumber `WpctlSource` corresponding to `target_profile`,
+    /// guaranteeing built-in microphones are routed for `"System Default"` even when Bluetooth speakers
+    /// with silent dummy profiles are attached.
+    pub fn resolve_exclusive_source_from_wpctl(
+        target_profile: &str,
+        sources: &[WpctlSource],
+    ) -> Option<WpctlSource> {
+        if sources.is_empty() {
+            return None;
+        }
+
+        let is_bluetooth = |s: &WpctlSource| -> bool {
+            s.device_api == "bluez5"
+                || s.device_bus == "bluetooth"
+                || s.node_name.to_lowercase().starts_with("bluez_")
+                || s.description.to_lowercase().contains("bluetooth")
+        };
+
+        let is_headset = |s: &WpctlSource| -> bool {
+            s.device_bus == "usb"
+                || s.node_name.to_lowercase().starts_with("alsa_input.usb-")
+                || s.description.to_lowercase().contains("headset")
+                || s.description.to_lowercase().contains("headphone")
+        };
+
+        match target_profile {
+            "Handsfree" => {
+                if let Some(bt) = sources.iter().find(|s| is_bluetooth(s)) {
+                    return Some(bt.clone());
+                }
+            }
+            "Headphones" => {
+                if let Some(hp) = sources.iter().find(|s| is_headset(s)) {
+                    return Some(hp.clone());
+                }
+            }
+            "System Default" | "default" => {
+                // Priority 1: Built-in PCI / analog / internal microphone
+                if let Some(internal) = sources.iter().find(|s| {
+                    !is_bluetooth(s)
+                        && !is_headset(s)
+                        && (s.device_bus == "pci"
+                            || s.node_name.contains("pci")
+                            || s.description.to_lowercase().contains("analog")
+                            || s.description.to_lowercase().contains("internal")
+                            || s.description.to_lowercase().contains("built-in"))
+                }) {
+                    return Some(internal.clone());
+                }
+
+                // Priority 2: Any non-Bluetooth, non-headset microphone
+                if let Some(non_bt) = sources.iter().find(|s| !is_bluetooth(s) && !is_headset(s)) {
+                    return Some(non_bt.clone());
+                }
+
+                // Priority 3: Default source if not Bluetooth
+                if let Some(def) = sources.iter().find(|s| s.is_default && !is_bluetooth(s)) {
+                    return Some(def.clone());
+                }
+
+                // Priority 4: First non-Bluetooth source
+                if let Some(first_non_bt) = sources.iter().find(|s| !is_bluetooth(s)) {
+                    return Some(first_non_bt.clone());
+                }
+
+                // Fallback: Default source or first source
+                if let Some(def) = sources.iter().find(|s| s.is_default) {
+                    return Some(def.clone());
+                }
+                return sources.first().cloned();
+            }
+            custom => {
+                let custom_lower = custom.to_lowercase();
+                if let Ok(target_id) = custom.parse::<u32>()
+                    && let Some(matched) = sources.iter().find(|s| s.id == target_id)
+                {
+                    return Some(matched.clone());
+                }
+                if let Some(matched) = sources.iter().find(|s| {
+                    s.node_name.to_lowercase() == custom_lower
+                        || s.description.to_lowercase() == custom_lower
+                        || s.description.to_lowercase().contains(&custom_lower)
+                }) {
+                    return Some(matched.clone());
+                }
+            }
+        }
+
+        None
+    }
+
     /// Inspects a `Card #` block from `pactl list cards` and, if it is a Bluetooth card currently
     /// on a playback-only (`a2dp-sink`, `bap-sink`) or `off` profile, returns `(card_name, target_input_profile)`
     /// for the highest-priority available duplex/headset profile that provides at least 1 input source
@@ -1026,6 +1467,21 @@ impl AudioRecorder {
     /// to detect the currently connected microphone hardware profile.
     pub fn detect_connected_audio_profile() -> &'static str {
         silence_alsa_logging();
+
+        // 1. Prefer native WirePlumber (wpctl) if available
+        if resolve_wpctl_binary().is_some() {
+            let status_out = run_wpctl_stdout(&["status"]);
+            if !status_out.is_empty() {
+                let wp_sources = Self::parse_wpctl_sources(&status_out, |id| {
+                    run_wpctl_stdout(&["inspect", &id.to_string()])
+                });
+                if !wp_sources.is_empty() {
+                    return Self::classify_hardware_profile_from_wpctl_sources(&wp_sources);
+                }
+            }
+        }
+
+        // 2. Fall back to PulseAudio (pactl)
         let sources_out = run_pactl_stdout(&["list", "sources"]);
         let cards_out = run_pactl_stdout(&["list", "cards"]);
 
@@ -1079,51 +1535,95 @@ impl AudioRecorder {
 
         let target_profile = self.device_name.as_deref().unwrap_or("System Default");
 
-        // Route PulseAudio/PipeWire exclusively to the selected hardware profile's source
-        let mut sources_out = run_pactl_stdout(&["list", "sources"]);
-        let cards_out = run_pactl_stdout(&["list", "cards"]);
+        // Route PipeWire/PulseAudio exclusively to the selected hardware profile's source
+        let mut routed_exclusive = false;
 
-        if target_profile == "Handsfree" {
-            let mut switched_bt_profile = false;
-            for card_block in cards_out.split("Card #").skip(1) {
-                if let Some((card_name, best_profile)) =
-                    resolve_bluetooth_input_profile_switch(card_block)
+        // 1. Prefer native WirePlumber (wpctl) if available
+        if resolve_wpctl_binary().is_some() {
+            let status_out = run_wpctl_stdout(&["status"]);
+            if !status_out.is_empty() {
+                let wp_sources = Self::parse_wpctl_sources(&status_out, |id| {
+                    run_wpctl_stdout(&["inspect", &id.to_string()])
+                });
+                if let Some(target_source) =
+                    Self::resolve_exclusive_source_from_wpctl(target_profile, &wp_sources)
                 {
-                    run_pactl_status(&["set-card-profile", &card_name, &best_profile]);
-                    switched_bt_profile = true;
+                    let id_str = target_source.id.to_string();
+                    let _ = run_wpctl_status(&["set-mute", &id_str, "0"]);
+
+                    if let Some(vol) = target_source.volume {
+                        if vol < 0.20 {
+                            let _ = run_wpctl_status(&["set-volume", &id_str, "0.55"]);
+                        } else if vol > 0.90
+                            && (target_source.device_bus == "pci"
+                                || target_source.node_name.contains("pci"))
+                        {
+                            let _ = run_wpctl_status(&["set-volume", &id_str, "0.65"]);
+                        }
+                    } else if target_source.is_muted {
+                        let _ = run_wpctl_status(&["set-volume", &id_str, "0.55"]);
+                    }
+
+                    let _ = run_wpctl_status(&["set-default", &id_str]);
+
+                    unsafe {
+                        std::env::set_var("PIPEWIRE_NODE", &target_source.node_name);
+                        std::env::set_var("PULSE_SOURCE", &target_source.node_name);
+                    }
+                    routed_exclusive = true;
                 }
-            }
-            if switched_bt_profile {
-                std::thread::sleep(Duration::from_millis(150));
-                sources_out = run_pactl_stdout(&["list", "sources"]);
             }
         }
 
-        let mut pulse_source_was_set = false;
-        if let Some(exclusive_source) =
-            Self::resolve_exclusive_source_from_pactl(target_profile, &sources_out, &cards_out)
-        {
-            let selected_port =
-                resolve_available_port_for_source(&sources_out, &exclusive_source, target_profile);
-            if let Some(ref port_id) = selected_port {
-                run_pactl_status(&["set-source-port", &exclusive_source, port_id]);
+        // 2. Fall back to PulseAudio (pactl) if wpctl routing was not performed
+        if !routed_exclusive {
+            let mut sources_out = run_pactl_stdout(&["list", "sources"]);
+            let cards_out = run_pactl_stdout(&["list", "cards"]);
+
+            if target_profile == "Handsfree" {
+                let mut switched_bt_profile = false;
+                for card_block in cards_out.split("Card #").skip(1) {
+                    if let Some((card_name, best_profile)) =
+                        resolve_bluetooth_input_profile_switch(card_block)
+                    {
+                        run_pactl_status(&["set-card-profile", &card_name, &best_profile]);
+                        switched_bt_profile = true;
+                    }
+                }
+                if switched_bt_profile {
+                    std::thread::sleep(Duration::from_millis(150));
+                    sources_out = run_pactl_stdout(&["list", "sources"]);
+                }
             }
-            run_pactl_status(&["set-source-mute", &exclusive_source, "0"]);
-            Self::ensure_healthy_source_gain(
-                &sources_out,
-                &exclusive_source,
-                selected_port.as_deref(),
-            );
-            run_pactl_status(&["set-default-source", &exclusive_source]);
-            unsafe {
-                std::env::set_var("PULSE_SOURCE", &exclusive_source);
-                std::env::set_var("PIPEWIRE_NODE", &exclusive_source);
-            }
-            pulse_source_was_set = true;
-        } else if target_profile == "System Default" || target_profile == "default" {
-            unsafe {
-                std::env::remove_var("PULSE_SOURCE");
-                std::env::remove_var("PIPEWIRE_NODE");
+
+            if let Some(exclusive_source) =
+                Self::resolve_exclusive_source_from_pactl(target_profile, &sources_out, &cards_out)
+            {
+                let selected_port = resolve_available_port_for_source(
+                    &sources_out,
+                    &exclusive_source,
+                    target_profile,
+                );
+                if let Some(ref port_id) = selected_port {
+                    run_pactl_status(&["set-source-port", &exclusive_source, port_id]);
+                }
+                run_pactl_status(&["set-source-mute", &exclusive_source, "0"]);
+                Self::ensure_healthy_source_gain(
+                    &sources_out,
+                    &exclusive_source,
+                    selected_port.as_deref(),
+                );
+                run_pactl_status(&["set-default-source", &exclusive_source]);
+                unsafe {
+                    std::env::set_var("PULSE_SOURCE", &exclusive_source);
+                    std::env::set_var("PIPEWIRE_NODE", &exclusive_source);
+                }
+                routed_exclusive = true;
+            } else if target_profile == "System Default" || target_profile == "default" {
+                unsafe {
+                    std::env::remove_var("PULSE_SOURCE");
+                    std::env::remove_var("PIPEWIRE_NODE");
+                }
             }
         }
 
@@ -1427,9 +1927,9 @@ impl AudioRecorder {
         let host = cpal::default_host();
         let mut opened = attempt_open_sequence(&host);
 
-        // If a specific PULSE_SOURCE failed to open (e.g. unplugged or rejected stream),
-        // automatically clear PULSE_SOURCE / PIPEWIRE_NODE so PulseAudio/PipeWire uses @DEFAULT_SOURCE@ and retry.
-        if opened.is_err() && pulse_source_was_set {
+        // If a specific PULSE_SOURCE / PIPEWIRE_NODE failed to open (e.g. unplugged or rejected stream),
+        // automatically clear PULSE_SOURCE / PIPEWIRE_NODE so sound server falls back cleanly and retry.
+        if opened.is_err() && routed_exclusive {
             unsafe {
                 std::env::remove_var("PULSE_SOURCE");
                 std::env::remove_var("PIPEWIRE_NODE");
@@ -1479,6 +1979,18 @@ impl AudioRecorder {
     /// Stop recording, close stream, resample to 16 kHz, normalize speech dynamic range,
     /// and encode to 16-bit PCM WAV bytes.
     pub fn stop_recording(&mut self) -> Result<Vec<u8>, AudioError> {
+        let (normalized, _) = self.stop_recording_samples_16k(None)?;
+        encode_pcm_wav(&normalized, 16000)
+    }
+
+    /// Stop recording, close stream, and return `(normalized_16k_samples, reused_finalized)`.
+    /// When `finalized_native_samples` is `Some(prev_len)` from a completed streaming pass with
+    /// a quiet tail, and no new voice activity was captured in `samples[prev_len..]` (for recordings
+    /// `<= 60s`), skips resampling/normalization and returns `(Vec::new(), true)`.
+    pub fn stop_recording_samples_16k(
+        &mut self,
+        finalized_native_samples: Option<usize>,
+    ) -> Result<(Vec<f32>, bool), AudioError> {
         self.is_recording.store(false, Ordering::SeqCst);
         self.is_paused.store(false, Ordering::SeqCst);
         self.stream.take();
@@ -1488,10 +2000,35 @@ impl AudioRecorder {
             std::mem::take(&mut *buf)
         };
 
-        let native_rate = self.sample_rate.load(Ordering::SeqCst);
+        let native_rate = self.sample_rate.load(Ordering::SeqCst).max(8000);
+        if samples.is_empty() {
+            return Ok((Vec::new(), false));
+        }
+
+        let max_window_samples = (native_rate as usize) * 60;
+        if let Some(prev_len) = finalized_native_samples
+            && prev_len > 0
+            && prev_len <= samples.len()
+            && samples.len() <= max_window_samples
+        {
+            let delta = &samples[prev_len..];
+            if delta.is_empty() || !has_voice_activity_at_rate(delta, native_rate) {
+                return Ok((Vec::new(), true));
+            }
+        }
+
         let resampled = resample_to_16k(&samples, native_rate)?;
         let normalized = normalize_speech_samples(&resampled);
-        encode_pcm_wav(&normalized, 16000)
+        Ok((normalized, false))
+    }
+
+    /// Appends synthetic samples to the internal capture buffer at `sample_rate` for deterministic benchmarks/tests.
+    pub fn push_test_samples(&self, samples: &[f32], sample_rate: u32) {
+        self.sample_rate
+            .store(sample_rate.max(8000), Ordering::SeqCst);
+        if let Ok(mut buf) = self.buffer.lock() {
+            buf.extend_from_slice(samples);
+        }
     }
 
     /// Starts recording audio without external level sender.

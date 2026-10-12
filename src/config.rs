@@ -38,7 +38,7 @@ impl Default for Config {
             ai_mode: "cloud".to_string(),
             local_model_id: "tiny.en".to_string(),
             local_custom_path: None,
-            local_threads: 4,
+            local_threads: 0,
             minibar_scale: 100,
         }
     }

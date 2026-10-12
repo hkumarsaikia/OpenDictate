@@ -8,12 +8,13 @@ ARCH="$(dpkg --print-architecture 2>/dev/null || echo "amd64")"
 DIST_DIR="$PROJECT_ROOT/dist"
 
 VARIANT="universal"
+REBUILD=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --variant)
             if [ -z "${2:-}" ]; then
-                echo "Error: --variant requires an argument (universal, avx2, or all)" >&2
+                echo "Error: --variant requires an argument (universal, portable, avx2, or all)" >&2
                 exit 1
             fi
             VARIANT="$2"
@@ -23,48 +24,124 @@ while [[ $# -gt 0 ]]; do
             VARIANT="${1#*=}"
             shift 1
             ;;
+        --rebuild)
+            REBUILD=1
+            shift 1
+            ;;
         -h|--help)
-            echo "Usage: $0 [--variant <universal|avx2|all>]"
+            echo "Usage: $0 [--rebuild] [--variant <universal|portable|avx2|all>]"
             echo ""
             echo "Options:"
-            echo "  --variant universal   Build package without AVX2/FMA for universal x86_64 compatibility (default)"
-            echo "  --variant avx2        Build package with AVX2 and FMA acceleration enabled"
-            echo "  --variant all         Build both universal and avx2 packages sequentially"
+            echo "  --rebuild             Force a fresh build in isolated staging directories without reusing cached target artifacts"
+            echo "  --variant universal   Build dual-binary package (portable SSE2 launcher + AVX2 sibling) (default)"
+            echo "  --variant portable    Build single-binary package with portable x86-64-v1 (SSE2) baseline only"
+            echo "  --variant avx2        Build single-binary package with AVX2/FMA/F16C/BMI2/SSE4.2 acceleration only"
+            echo "  --variant all         Build universal, portable, and avx2 packages sequentially"
             echo "  -h, --help            Show this help message"
             exit 0
             ;;
         *)
             echo "Error: Unknown argument '$1'" >&2
-            echo "Usage: $0 [--variant <universal|avx2|all>]" >&2
+            echo "Usage: $0 [--rebuild] [--variant <universal|portable|avx2|all>]" >&2
             exit 1
             ;;
     esac
 done
 
+if [ "$REBUILD" -eq 1 ]; then
+    REBUILD_TARGET_ROOT="$PROJECT_ROOT/build/deb-rebuild-targets"
+    PORTABLE_TARGET_DIR="$REBUILD_TARGET_ROOT/portable"
+    AVX2_TARGET_DIR="$REBUILD_TARGET_ROOT/avx2"
+else
+    PORTABLE_TARGET_DIR="$PROJECT_ROOT/target/portable"
+    AVX2_TARGET_DIR="$PROJECT_ROOT/target/avx2"
+fi
+
+PORTABLE_BIN="$PORTABLE_TARGET_DIR/release/opendictate"
+AVX2_BIN="$AVX2_TARGET_DIR/release/opendictate"
+PORTABLE_BUILT_IN_RUN=0
+AVX2_BUILT_IN_RUN=0
+
+build_portable_binary() {
+    local portable_target="$PORTABLE_TARGET_DIR"
+    if [ "$PORTABLE_BUILT_IN_RUN" -eq 1 ] && [ -f "$PORTABLE_BIN" ]; then
+        echo "Using portable (x86-64-v1 / SSE2) release binary compiled in this run at $PORTABLE_BIN"
+        return 0
+    fi
+    if [ "$REBUILD" -eq 1 ]; then
+        echo "Cleaning isolated portable rebuild staging directory at $portable_target..."
+        rm -rf "$portable_target"
+    fi
+    echo "Compiling portable (x86-64-v1 / SSE2) release binary into $portable_target..."
+    env -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
+        CARGO_BUILD_RUSTFLAGS="-C target-cpu=x86-64 -C target-feature=-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2,-fma,-f16c,-bmi1,-bmi2,-lzcnt,-popcnt,-movbe" \
+        GGML_NATIVE=OFF \
+        GGML_SSE42=OFF \
+        GGML_AVX=OFF \
+        GGML_AVX2=OFF \
+        GGML_BMI2=OFF \
+        GGML_FMA=OFF \
+        GGML_F16C=OFF \
+        GGML_AVX_VNNI=OFF \
+        GGML_AVX512=OFF \
+        GGML_AVX512_VBMI=OFF \
+        GGML_AVX512_VNNI=OFF \
+        GGML_AVX512_BF16=OFF \
+        GGML_AMX_TILE=OFF \
+        GGML_AMX_INT8=OFF \
+        GGML_AMX_BF16=OFF \
+        cargo build --release --manifest-path "$PROJECT_ROOT/Cargo.toml" --target-dir "$portable_target"
+    PORTABLE_BUILT_IN_RUN=1
+}
+
+build_avx2_binary() {
+    local avx2_target="$AVX2_TARGET_DIR"
+    if [ "$AVX2_BUILT_IN_RUN" -eq 1 ] && [ -f "$AVX2_BIN" ]; then
+        echo "Using optimized (AVX2 + FMA + F16C + BMI2 + SSE4.2) release binary compiled in this run at $AVX2_BIN"
+        return 0
+    fi
+    if [ "$REBUILD" -eq 1 ]; then
+        echo "Cleaning isolated AVX2 rebuild staging directory at $avx2_target..."
+        rm -rf "$avx2_target"
+    fi
+    echo "Compiling optimized (AVX2 + FMA + F16C + BMI2 + SSE4.2) release binary into $avx2_target..."
+    env -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
+        CARGO_BUILD_RUSTFLAGS="-C target-cpu=x86-64 -C target-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+avx,+avx2,+fma,+f16c,+bmi2,-bmi1,-lzcnt,-popcnt,-movbe" \
+        GGML_NATIVE=OFF \
+        GGML_SSE42=ON \
+        GGML_AVX=ON \
+        GGML_AVX2=ON \
+        GGML_BMI2=ON \
+        GGML_FMA=ON \
+        GGML_F16C=ON \
+        GGML_AVX_VNNI=OFF \
+        GGML_AVX512=OFF \
+        GGML_AVX512_VBMI=OFF \
+        GGML_AVX512_VNNI=OFF \
+        GGML_AVX512_BF16=OFF \
+        GGML_AMX_TILE=OFF \
+        GGML_AMX_INT8=OFF \
+        GGML_AMX_BF16=OFF \
+        cargo build --release --manifest-path "$PROJECT_ROOT/Cargo.toml" --target-dir "$avx2_target"
+    AVX2_BUILT_IN_RUN=1
+}
+
 build_variant() {
     local variant="$1"
-    local variant_cmake_args=""
     local variant_desc=""
 
     case "$variant" in
         universal)
-            variant_desc="universal compatibility without AVX2/FMA hardware requirements"
-            export GGML_NATIVE=OFF
-            export GGML_AVX=OFF
-            export GGML_AVX2=OFF
-            export GGML_AVX512=OFF
-            export GGML_FMA=OFF
+            variant_desc="dual-binary universal x86_64 compatibility (SSE2 baseline launcher + runtime AVX2 dispatch)"
+            ;;
+        portable)
+            variant_desc="portable x86-64-v1 (SSE2) single-binary baseline without AVX2/FMA requirements"
             ;;
         avx2)
-            variant_desc="optimized with AVX2 and FMA vector acceleration"
-            export GGML_NATIVE=OFF
-            export GGML_AVX=ON
-            export GGML_AVX2=ON
-            export GGML_AVX512=OFF
-            export GGML_FMA=ON
+            variant_desc="optimized single-binary with AVX2, FMA, F16C, BMI2, and SSE4.2 vector acceleration"
             ;;
         *)
-            echo "Error: Unknown variant '$variant'. Must be 'universal' or 'avx2'." >&2
+            echo "Error: Unknown variant '$variant'. Must be 'universal', 'portable', or 'avx2'." >&2
             exit 1
             ;;
     esac
@@ -77,27 +154,9 @@ build_variant() {
     echo "======================================================================"
     echo "=== Building Debian Package: $package_name.deb ==="
     echo "=== Hardware Variant: $variant ($variant_desc) ==="
-    echo "=== GGML Flags: NATIVE=$GGML_NATIVE AVX=$GGML_AVX AVX2=$GGML_AVX2 FMA=$GGML_FMA ==="
     echo "======================================================================"
 
-    # 1. Clean native Whisper artifacts to ensure variant flags take full effect
-    echo "Cleaning whisper-rs-sys, whisper-rs, and opendictate release artifacts..."
-    cargo clean --release -p whisper-rs-sys -p whisper-rs -p opendictate --manifest-path "$PROJECT_ROOT/Cargo.toml"
-
-    # 2. Compile native Rust release binary
-    echo "Compiling release binary with Cargo (GGML_NATIVE=$GGML_NATIVE GGML_AVX2=$GGML_AVX2)..."
-    cargo build --release --manifest-path "$PROJECT_ROOT/Cargo.toml"
-
-    local release_bin="$PROJECT_ROOT/target/release/opendictate"
-    if [ ! -f "$release_bin" ]; then
-        echo "Error: Release binary not found at $release_bin" >&2
-        exit 1
-    fi
-
-    echo "Stripping symbols from release binary..."
-    strip "$release_bin"
-
-    # 3. Stage packaging filesystem
+    # 1. Stage packaging filesystem
     echo "Staging Debian package hierarchy in $build_dir..."
     rm -rf "$build_dir"
     mkdir -p "$DIST_DIR"
@@ -107,8 +166,23 @@ build_variant() {
     mkdir -p "$build_dir/usr/share/metainfo"
     mkdir -p "$build_dir/usr/share/icons/hicolor/scalable/apps"
 
-    # Install native executable
-    install -m 755 "$release_bin" "$build_dir/usr/bin/opendictate"
+    # 2. Compile and install native executable(s) from isolated target directories
+    if [ "$variant" = "universal" ]; then
+        build_portable_binary
+        build_avx2_binary
+        install -m 755 "$PORTABLE_BIN" "$build_dir/usr/bin/opendictate"
+        install -m 755 "$AVX2_BIN" "$build_dir/usr/bin/opendictate-avx2"
+        strip "$build_dir/usr/bin/opendictate" "$build_dir/usr/bin/opendictate-avx2"
+    elif [ "$variant" = "portable" ]; then
+        build_portable_binary
+        install -m 755 "$PORTABLE_BIN" "$build_dir/usr/bin/opendictate"
+        strip "$build_dir/usr/bin/opendictate"
+    else
+        build_avx2_binary
+        install -m 755 "$AVX2_BIN" "$build_dir/usr/bin/opendictate"
+        strip "$build_dir/usr/bin/opendictate"
+    fi
+
 
     # Install FreeDesktop desktop entries (both reverse-DNS and legacy names)
     if [ -f "$PROJECT_ROOT/data/io.github.opendictate.OpenDictate.desktop" ]; then
@@ -174,7 +248,7 @@ Section: utils
 Priority: optional
 Architecture: ${ARCH}
 Maintainer: H. K. Saikia <https://github.com/hkumarsaikia/OpenDictate>
-Depends: libgtk-4-1, libadwaita-1-0, libasound2t64 | libasound2
+Depends: libgtk-4-1, libadwaita-1-0, libasound2t64 | libasound2, wireplumber | pulseaudio-utils
 Description: Voice dictation and AI speech-to-text application for Linux
  OpenDictate is a native Linux voice dictation and AI speech-to-text
  desktop application built with Rust, GTK4, and Libadwaita. It combines
@@ -243,6 +317,9 @@ case "$VARIANT" in
     universal)
         build_variant "universal"
         ;;
+    portable)
+        build_variant "portable"
+        ;;
     avx2)
         build_variant "avx2"
         # If universal package already exists, ensure symlink exists
@@ -252,10 +329,11 @@ case "$VARIANT" in
         ;;
     all)
         build_variant "universal"
+        build_variant "portable"
         build_variant "avx2"
         ;;
     *)
-        echo "Error: Unknown variant '$VARIANT'. Must be 'universal', 'avx2', or 'all'." >&2
+        echo "Error: Unknown variant '$VARIANT'. Must be 'universal', 'portable', 'avx2', or 'all'." >&2
         exit 1
         ;;
 esac

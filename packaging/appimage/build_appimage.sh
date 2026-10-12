@@ -32,15 +32,71 @@ for arg in "$@"; do
     esac
 done
 
-# 1. Compile or verify release binary
-RELEASE_BIN="$PROJECT_ROOT/target/release/opendictate"
-if [ ! -f "$RELEASE_BIN" ] || [ "$REBUILD" -eq 1 ]; then
-    echo "Compiling release binary with Cargo..."
-    cargo build --release --manifest-path "$PROJECT_ROOT/Cargo.toml"
+# 1. Compile or verify portable (SSE2) and optimized (AVX2) release binaries
+if [ "$REBUILD" -eq 1 ]; then
+    REBUILD_TARGET_ROOT="$BUILD_DIR/appimage-rebuild-targets"
+    echo "Preparing isolated fresh build directories under $REBUILD_TARGET_ROOT..."
+    rm -rf "$REBUILD_TARGET_ROOT"
+    PORTABLE_TARGET_DIR="$REBUILD_TARGET_ROOT/portable"
+    AVX2_TARGET_DIR="$REBUILD_TARGET_ROOT/avx2"
+else
+    PORTABLE_TARGET_DIR="$PROJECT_ROOT/target/portable"
+    AVX2_TARGET_DIR="$PROJECT_ROOT/target/avx2"
 fi
 
-if [ ! -f "$RELEASE_BIN" ]; then
-    echo "Error: Release binary not found at $RELEASE_BIN" >&2
+PORTABLE_BIN="$PORTABLE_TARGET_DIR/release/opendictate"
+AVX2_BIN="$AVX2_TARGET_DIR/release/opendictate"
+
+if [ ! -f "$PORTABLE_BIN" ] || [ "$REBUILD" -eq 1 ]; then
+    echo "Compiling portable (x86-64-v1 / SSE2) release binary into $PORTABLE_TARGET_DIR..."
+    env -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
+        CARGO_BUILD_RUSTFLAGS="-C target-cpu=x86-64 -C target-feature=-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2,-fma,-f16c,-bmi1,-bmi2,-lzcnt,-popcnt,-movbe" \
+        GGML_NATIVE=OFF \
+        GGML_SSE42=OFF \
+        GGML_AVX=OFF \
+        GGML_AVX2=OFF \
+        GGML_BMI2=OFF \
+        GGML_FMA=OFF \
+        GGML_F16C=OFF \
+        GGML_AVX_VNNI=OFF \
+        GGML_AVX512=OFF \
+        GGML_AVX512_VBMI=OFF \
+        GGML_AVX512_VNNI=OFF \
+        GGML_AVX512_BF16=OFF \
+        GGML_AMX_TILE=OFF \
+        GGML_AMX_INT8=OFF \
+        GGML_AMX_BF16=OFF \
+        cargo build --release --manifest-path "$PROJECT_ROOT/Cargo.toml" --target-dir "$PORTABLE_TARGET_DIR"
+fi
+
+if [ ! -f "$AVX2_BIN" ] || [ "$REBUILD" -eq 1 ]; then
+    echo "Compiling optimized (AVX2 + FMA + F16C + BMI2 + SSE4.2) release binary into $AVX2_TARGET_DIR..."
+    env -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
+        CARGO_BUILD_RUSTFLAGS="-C target-cpu=x86-64 -C target-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+avx,+avx2,+fma,+f16c,+bmi2,-bmi1,-lzcnt,-popcnt,-movbe" \
+        GGML_NATIVE=OFF \
+        GGML_SSE42=ON \
+        GGML_AVX=ON \
+        GGML_AVX2=ON \
+        GGML_BMI2=ON \
+        GGML_FMA=ON \
+        GGML_F16C=ON \
+        GGML_AVX_VNNI=OFF \
+        GGML_AVX512=OFF \
+        GGML_AVX512_VBMI=OFF \
+        GGML_AVX512_VNNI=OFF \
+        GGML_AVX512_BF16=OFF \
+        GGML_AMX_TILE=OFF \
+        GGML_AMX_INT8=OFF \
+        GGML_AMX_BF16=OFF \
+        cargo build --release --manifest-path "$PROJECT_ROOT/Cargo.toml" --target-dir "$AVX2_TARGET_DIR"
+fi
+
+if [ ! -f "$PORTABLE_BIN" ]; then
+    echo "Error: Portable release binary not found at $PORTABLE_BIN" >&2
+    exit 1
+fi
+if [ ! -f "$AVX2_BIN" ]; then
+    echo "Error: Optimized AVX2 release binary not found at $AVX2_BIN" >&2
     exit 1
 fi
 
@@ -55,10 +111,11 @@ mkdir -p "$APP_DIR/usr/share/icons/hicolor/scalable/apps"
 mkdir -p "$APP_DIR/usr/share/glib-2.0/schemas"
 mkdir -p "$DIST_DIR"
 
-# 3. Install AppRun and main executable
-echo "Installing AppRun and executable..."
+# 3. Install AppRun and dual binaries (portable launcher + AVX2 sibling)
+echo "Installing AppRun and dual executables..."
 install -m 755 "$SCRIPT_DIR/AppRun" "$APP_DIR/AppRun"
-install -m 755 "$RELEASE_BIN" "$APP_DIR/usr/bin/opendictate"
+install -m 755 "$PORTABLE_BIN" "$APP_DIR/usr/bin/opendictate"
+install -m 755 "$AVX2_BIN" "$APP_DIR/usr/bin/opendictate-avx2"
 
 # 4. Install FreeDesktop desktop entry and AppStream metadata
 echo "Installing desktop entry and AppStream metadata..."

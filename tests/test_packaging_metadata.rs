@@ -80,8 +80,8 @@ fn test_flatpak_manifest_core_attributes() {
     let runtime_version = extract_top_level_yaml_value(&content, "runtime-version")
         .expect("Missing runtime-version in Flatpak manifest");
     assert_eq!(
-        runtime_version, "48",
-        "Flatpak runtime-version must be '48'"
+        runtime_version, "51",
+        "Flatpak runtime-version must be '51'"
     );
 
     let sdk =
@@ -93,6 +93,22 @@ fn test_flatpak_manifest_core_attributes() {
     assert_eq!(
         command, "opendictate",
         "Flatpak command must be opendictate"
+    );
+
+    let sdk_extensions = extract_yaml_list_under_key(&content, "sdk-extensions");
+    assert!(
+        sdk_extensions.contains(&"org.freedesktop.Sdk.Extension.rust-stable".to_string()),
+        "Flatpak sdk-extensions must include org.freedesktop.Sdk.Extension.rust-stable"
+    );
+    assert!(
+        sdk_extensions.contains(&"org.freedesktop.Sdk.Extension.llvm22".to_string()),
+        "Flatpak sdk-extensions must include org.freedesktop.Sdk.Extension.llvm22"
+    );
+    assert!(
+        content.contains("/usr/lib/sdk/llvm22/bin")
+            && content.contains("/usr/lib/sdk/llvm22/lib")
+            && !content.contains("llvm18"),
+        "Flatpak manifest must reference /usr/lib/sdk/llvm22/bin and /usr/lib/sdk/llvm22/lib without legacy llvm18 paths"
     );
 }
 
@@ -333,5 +349,133 @@ fn test_snapcraft_alsa_pulseaudio_routing() {
     assert!(
         content.contains("/usr/share/alsa:") && content.contains("alsa-lib:"),
         "Snapcraft manifest must bind /usr/share/alsa and alsa-lib via layout:"
+    );
+}
+
+#[test]
+fn test_dual_binary_packaging_and_amd64_platform_scope() {
+    let snap_content =
+        fs::read_to_string(project_root().join("snap/snapcraft.yaml")).expect("read snapcraft");
+    let flatpak_content = fs::read_to_string(
+        project_root().join("packaging/flatpak/io.github.opendictate.OpenDictate.yml"),
+    )
+    .expect("read flatpak");
+    let appimage_content =
+        fs::read_to_string(project_root().join("packaging/appimage/build_appimage.sh"))
+            .expect("read build_appimage.sh");
+    let deb_content =
+        fs::read_to_string(project_root().join("build_rust_deb.sh")).expect("read build_rust_deb");
+
+    // 1. Snapcraft must declare amd64 only (no untested arm64 claim) and package both binaries
+    assert!(
+        snap_content.contains("platforms:\n  amd64:\n") && !snap_content.contains("arm64:"),
+        "snap/snapcraft.yaml must declare amd64 only without claiming untested arm64 support"
+    );
+    assert!(
+        snap_content.contains("opendictate-avx2") && snap_content.contains("target/avx2"),
+        "snap/snapcraft.yaml must build and stage opendictate-avx2 from isolated target/avx2"
+    );
+
+    // 2. Flatpak must build both target/portable and target/avx2 and install opendictate + opendictate-avx2
+    assert!(
+        flatpak_content.contains("target/portable")
+            && flatpak_content.contains("target/avx2")
+            && flatpak_content.contains("/app/bin/opendictate-avx2"),
+        "Flatpak manifest must build isolated portable and avx2 targets and install /app/bin/opendictate-avx2"
+    );
+
+    // 3. AppImage must build both target/portable and target/avx2 and install opendictate + opendictate-avx2
+    assert!(
+        appimage_content.contains("target/portable")
+            && appimage_content.contains("target/avx2")
+            && appimage_content.contains("usr/bin/opendictate-avx2"),
+        "build_appimage.sh must build isolated portable and avx2 targets and install usr/bin/opendictate-avx2"
+    );
+
+    // 4. Debian build script must build both target/portable and target/avx2 and install opendictate-avx2 in universal variant
+    assert!(
+        deb_content.contains("target/portable")
+            && deb_content.contains("target/avx2")
+            && deb_content.contains("usr/bin/opendictate-avx2"),
+        "build_rust_deb.sh must build isolated portable and avx2 targets and install usr/bin/opendictate-avx2"
+    );
+
+    // 5. All four packaging configurations must enforce deterministic portable and AVX2 Rust/GGML CPU-tier policies
+    let portable_rustflags = "-C target-cpu=x86-64 -C target-feature=-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2,-fma,-f16c,-bmi1,-bmi2,-lzcnt,-popcnt,-movbe";
+    let avx2_rustflags = "-C target-cpu=x86-64 -C target-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+avx,+avx2,+fma,+f16c,+bmi2,-bmi1,-lzcnt,-popcnt,-movbe";
+
+    for (name, content) in [
+        ("Flatpak manifest", &flatpak_content),
+        ("Snapcraft manifest", &snap_content),
+        ("AppImage build script", &appimage_content),
+        ("Debian build script", &deb_content),
+    ] {
+        assert!(
+            content.contains(portable_rustflags),
+            "{name} must specify the portable x86-64-v1 CARGO_BUILD_RUSTFLAGS policy"
+        );
+        assert!(
+            content.contains(avx2_rustflags),
+            "{name} must specify the AVX2-tier CARGO_BUILD_RUSTFLAGS policy"
+        );
+        assert!(
+            content.contains("RUSTFLAGS") && content.contains("CARGO_ENCODED_RUSTFLAGS"),
+            "{name} must unset inherited RUSTFLAGS and CARGO_ENCODED_RUSTFLAGS"
+        );
+        for enabled_avx2_flag in [
+            "GGML_SSE42=ON",
+            "GGML_AVX=ON",
+            "GGML_AVX2=ON",
+            "GGML_BMI2=ON",
+            "GGML_FMA=ON",
+            "GGML_F16C=ON",
+        ] {
+            assert!(
+                content.contains(enabled_avx2_flag),
+                "{name} must explicitly enable {enabled_avx2_flag} for the AVX2 build"
+            );
+        }
+        for disabled_higher_tier_flag in [
+            "GGML_NATIVE=OFF",
+            "GGML_AVX_VNNI=OFF",
+            "GGML_AVX512=OFF",
+            "GGML_AVX512_VBMI=OFF",
+            "GGML_AVX512_VNNI=OFF",
+            "GGML_AVX512_BF16=OFF",
+            "GGML_AMX_TILE=OFF",
+            "GGML_AMX_INT8=OFF",
+            "GGML_AMX_BF16=OFF",
+        ] {
+            assert!(
+                content.contains(disabled_higher_tier_flag),
+                "{name} must explicitly set {disabled_higher_tier_flag}"
+            );
+        }
+        for portable_off_key in [
+            "GGML_SSE42",
+            "GGML_AVX",
+            "GGML_AVX2",
+            "GGML_BMI2",
+            "GGML_FMA",
+            "GGML_F16C",
+        ] {
+            let env_syntax = format!("{portable_off_key}=OFF");
+            let yaml_syntax = format!("{portable_off_key}: \"OFF\"");
+            assert!(
+                content.contains(&env_syntax) || content.contains(&yaml_syntax),
+                "{name} must explicitly disable {portable_off_key} for the portable build"
+            );
+        }
+    }
+
+    // 6. AppImage and Debian scripts must support --rebuild using isolated rebuild staging directories
+    assert!(
+        appimage_content.contains("--rebuild")
+            && appimage_content.contains("appimage-rebuild-targets"),
+        "build_appimage.sh must support --rebuild with isolated appimage-rebuild-targets directories"
+    );
+    assert!(
+        deb_content.contains("--rebuild") && deb_content.contains("deb-rebuild-targets"),
+        "build_rust_deb.sh must support --rebuild with isolated deb-rebuild-targets directories"
     );
 }

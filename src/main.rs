@@ -13,6 +13,7 @@ use relm4::MessageBroker;
 static MAIN_BROKER: MessageBroker<MainWindowMsg> = MessageBroker::new();
 
 fn main() {
+    opendictate::services::ai::try_exec_avx2_sibling();
     env_logger::init();
     opendictate::audio::recorder::silence_alsa_logging();
     opendictate::services::crash_reporter::CrashReporter::install_panic_hook();

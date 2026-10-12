@@ -140,6 +140,13 @@ pub enum DictationWorkerOutput {
     NoSpeechDetected,
 }
 
+#[derive(Debug, Clone)]
+struct PartialTranscriptCache {
+    raw_text: String,
+    enhanced_text: String,
+    finalized_native_samples: Option<usize>,
+}
+
 /// Relm4 Worker managing dictation lifecycle and asynchronous background jobs.
 pub struct DictationWorker {
     recorder: AudioRecorder,
@@ -154,7 +161,7 @@ pub struct DictationWorker {
     stream_task: Option<tokio::task::AbortHandle>,
     processing_task: Option<tokio::task::AbortHandle>,
     level_active: Option<Arc<AtomicBool>>,
-    last_partial: Arc<Mutex<Option<(String, String)>>>,
+    last_partial: Arc<Mutex<Option<PartialTranscriptCache>>>,
 }
 
 impl std::fmt::Debug for DictationWorker {
@@ -341,6 +348,7 @@ impl Worker for DictationWorker {
                 let stream_job = tokio_handle().spawn(async move {
                     let poll_ms = if is_local_ai { 450 } else { 1500 };
                     let mut last_sample_len: usize = 0;
+                    let mut prev_finalized = false;
 
                     loop {
                         tokio::time::sleep(std::time::Duration::from_millis(poll_ms)).await;
@@ -365,39 +373,107 @@ impl Worker for DictationWorker {
                             continue;
                         }
 
-                        let snap = match snapshot_handle.snapshot_wav(60.0) {
-                            Ok(Some(res)) => res,
-                            _ => continue,
-                        };
-                        let (wav_bytes, total_samples) = snap;
-                        if total_samples <= last_sample_len {
-                            continue;
-                        }
-                        last_sample_len = total_samples;
+                        if is_local_ai {
+                            let snap = match snapshot_handle.snapshot_samples_16k(
+                                60.0,
+                                last_sample_len,
+                                prev_finalized,
+                            ) {
+                                Ok(Some(res)) => res,
+                                _ => continue,
+                            };
+                            if snap.samples_16k.is_empty() {
+                                continue;
+                            }
+                            let snap_total = snap.total_native_samples;
+                            let snap_tail_quiet = snap.tail_is_quiet;
 
-                        if let Ok(raw_text) = ai_stream.transcribe(&wav_bytes).await {
-                            let raw_trimmed = raw_text.trim().to_string();
-                            if !raw_trimmed.is_empty()
-                                && stream_active.load(Ordering::SeqCst)
-                                && gate_stream.validate_and_tag(task_session_id)
+                            // Invalidate any previous finalization marker before awaiting inference
+                            // so a concurrent Stop cannot reuse a stale partial transcript if the user
+                            // resumed speaking.
+                            prev_finalized = false;
+                            if let Ok(mut guard) = last_partial_stream.lock()
+                                && let Some(ref mut cached) = *guard
                             {
-                                let enhanced_text = if stream_tone.eq_ignore_ascii_case("Raw") {
-                                    raw_trimmed.clone()
-                                } else {
-                                    crate::services::ai::utils::apply_smart_local_formatting(
-                                        &raw_trimmed,
-                                        &stream_tone,
-                                    )
-                                };
-                                if let Ok(mut guard) = last_partial_stream.lock() {
-                                    *guard = Some((raw_trimmed.clone(), enhanced_text.clone()));
+                                cached.finalized_native_samples = None;
+                            }
+
+                            if let Ok(raw_text) =
+                                ai_stream.transcribe_samples_16k(snap.samples_16k).await
+                            {
+                                let raw_trimmed = raw_text.trim().to_string();
+                                if !raw_trimmed.is_empty()
+                                    && stream_active.load(Ordering::SeqCst)
+                                    && gate_stream.validate_and_tag(task_session_id)
+                                {
+                                    last_sample_len = snap_total;
+                                    prev_finalized = snap_tail_quiet;
+                                    let enhanced_text = if stream_tone.eq_ignore_ascii_case("Raw") {
+                                        raw_trimmed.clone()
+                                    } else {
+                                        crate::services::ai::utils::apply_smart_local_formatting(
+                                            &raw_trimmed,
+                                            &stream_tone,
+                                        )
+                                    };
+                                    if let Ok(mut guard) = last_partial_stream.lock() {
+                                        *guard = Some(PartialTranscriptCache {
+                                            raw_text: raw_trimmed.clone(),
+                                            enhanced_text: enhanced_text.clone(),
+                                            finalized_native_samples: if snap_tail_quiet {
+                                                Some(snap_total)
+                                            } else {
+                                                None
+                                            },
+                                        });
+                                    }
+                                    let _ = sender_stream.output(
+                                        DictationWorkerOutput::PartialTranscript {
+                                            raw_text: raw_trimmed,
+                                            enhanced_text,
+                                        },
+                                    );
                                 }
-                                let _ = sender_stream.output(
-                                    DictationWorkerOutput::PartialTranscript {
-                                        raw_text: raw_trimmed,
-                                        enhanced_text,
-                                    },
-                                );
+                            }
+                        } else {
+                            let snap = match snapshot_handle.snapshot_wav(60.0) {
+                                Ok(Some(res)) => res,
+                                _ => continue,
+                            };
+                            let (wav_bytes, total_samples) = snap;
+                            if total_samples <= last_sample_len {
+                                continue;
+                            }
+                            last_sample_len = total_samples;
+
+                            if let Ok(raw_text) = ai_stream.transcribe(&wav_bytes).await {
+                                let raw_trimmed = raw_text.trim().to_string();
+                                if !raw_trimmed.is_empty()
+                                    && stream_active.load(Ordering::SeqCst)
+                                    && gate_stream.validate_and_tag(task_session_id)
+                                {
+                                    let enhanced_text = if stream_tone.eq_ignore_ascii_case("Raw") {
+                                        raw_trimmed.clone()
+                                    } else {
+                                        crate::services::ai::utils::apply_smart_local_formatting(
+                                            &raw_trimmed,
+                                            &stream_tone,
+                                        )
+                                    };
+                                    if let Ok(mut guard) = last_partial_stream.lock() {
+                                        *guard = Some(PartialTranscriptCache {
+                                            raw_text: raw_trimmed.clone(),
+                                            enhanced_text: enhanced_text.clone(),
+                                            finalized_native_samples: None,
+                                        });
+                                    }
+                                    let _ = sender_stream.output(
+                                        DictationWorkerOutput::PartialTranscript {
+                                            raw_text: raw_trimmed,
+                                            enhanced_text,
+                                        },
+                                    );
+                                }
                             }
                         }
                     }
@@ -504,6 +580,217 @@ impl Worker for DictationWorker {
                     handle.abort();
                 }
                 let cached_partial = self.last_partial.lock().ok().and_then(|mut g| g.take());
+                let is_local_ai = self.config.ai_mode.eq_ignore_ascii_case("local");
+
+                if is_local_ai {
+                    let finalized_len = cached_partial
+                        .as_ref()
+                        .filter(|p| !p.raw_text.trim().is_empty())
+                        .and_then(|p| p.finalized_native_samples);
+                    let (samples_16k, reused_finalized) =
+                        match self.recorder.stop_recording_samples_16k(finalized_len) {
+                            Ok(res) => res,
+                            Err(e) => {
+                                self.set_lifecycle_state(RecordingLifecycleState::Idle);
+                                crate::services::crash_reporter::CrashReporter::record_event(
+                                    "AudioCapture",
+                                    &format!("Audio stop error: {}", e),
+                                );
+                                let _ = sender.output(DictationWorkerOutput::AudioLevel(0.0));
+                                let _ = sender.output(DictationWorkerOutput::Error(format!(
+                                    "Audio stop error: {}",
+                                    e
+                                )));
+                                return;
+                            }
+                        };
+
+                    let _ = sender.output(DictationWorkerOutput::AudioLevel(0.0));
+                    let _ = sender.output(DictationWorkerOutput::ProcessingStarted);
+                    let _ = sender.output(DictationWorkerOutput::StatusMessage(
+                        "Transcribing...".to_string(),
+                    ));
+
+                    if reused_finalized
+                        && let Some(ref partial) = cached_partial
+                        && !partial.raw_text.trim().is_empty()
+                    {
+                        if self.session_gate.validate_and_tag(task_session_id) {
+                            let raw_trimmed = partial.raw_text.trim().to_string();
+                            let enhanced_text = if tone.eq_ignore_ascii_case("Raw") {
+                                raw_trimmed.clone()
+                            } else {
+                                crate::services::ai::utils::apply_smart_local_formatting(
+                                    &raw_trimmed,
+                                    &tone,
+                                )
+                            };
+                            self.set_lifecycle_state(RecordingLifecycleState::Idle);
+                            let _ = self.storage.insert_dictation(
+                                &raw_trimmed,
+                                &enhanced_text,
+                                &tone,
+                                "dictation",
+                                duration,
+                            );
+                            let _ = sender.output(DictationWorkerOutput::Success {
+                                raw_text: raw_trimmed,
+                                enhanced_text,
+                                duration_seconds: duration,
+                            });
+                        }
+                        return;
+                    }
+
+                    if samples_16k.is_empty() {
+                        if let Some(partial) = cached_partial
+                            && !partial.raw_text.trim().is_empty()
+                        {
+                            if self.session_gate.validate_and_tag(task_session_id) {
+                                self.set_lifecycle_state(RecordingLifecycleState::Idle);
+                                let _ = self.storage.insert_dictation(
+                                    &partial.raw_text,
+                                    &partial.enhanced_text,
+                                    &tone,
+                                    "dictation",
+                                    duration,
+                                );
+                                let _ = sender.output(DictationWorkerOutput::Success {
+                                    raw_text: partial.raw_text,
+                                    enhanced_text: partial.enhanced_text,
+                                    duration_seconds: duration,
+                                });
+                            }
+                            return;
+                        }
+                        self.set_lifecycle_state(RecordingLifecycleState::Idle);
+                        if had_stream_error {
+                            let _ = sender.output(DictationWorkerOutput::AudioLevel(0.0));
+                            let _ = sender.output(DictationWorkerOutput::Error(
+                                "Microphone disconnected or audio stream error".to_string(),
+                            ));
+                            return;
+                        }
+                        crate::services::crash_reporter::CrashReporter::record_event(
+                            "AudioCapture",
+                            &format!(
+                                "No speech / 0 audio frames captured (0 samples over {:.2}s)",
+                                duration
+                            ),
+                        );
+                        let _ = sender.output(DictationWorkerOutput::AudioLevel(0.0));
+                        let _ = sender.output(DictationWorkerOutput::StatusMessage(
+                            "No speech detected".to_string(),
+                        ));
+                        let _ = sender.output(DictationWorkerOutput::NoSpeechDetected);
+                        return;
+                    }
+
+                    let ai = self.ai_manager.clone();
+                    let storage = self.storage.clone();
+                    let sender_clone = sender.clone();
+                    let gate_proc = self.session_gate.clone();
+                    let state_proc = self.state.clone();
+
+                    let proc_job = tokio_handle().spawn(async move {
+                        let raw_result = ai.transcribe_samples_16k(samples_16k).await;
+                        if !gate_proc.is_valid_commit(task_session_id) {
+                            return;
+                        }
+
+                        let raw_trimmed = match raw_result {
+                            Ok(raw_text) if !raw_text.trim().is_empty() => {
+                                raw_text.trim().to_string()
+                            }
+                            Ok(_) => {
+                                if let Some(ref partial) = cached_partial
+                                    && !partial.raw_text.trim().is_empty()
+                                {
+                                    partial.raw_text.trim().to_string()
+                                } else {
+                                    if gate_proc.validate_and_tag(task_session_id) {
+                                        if let Ok(mut g) = state_proc.lock() {
+                                            *g = RecordingLifecycleState::Idle;
+                                        }
+                                        crate::services::crash_reporter::CrashReporter::record_event(
+                                            "AIEngine",
+                                            "Transcription returned empty text",
+                                        );
+                                        let _ = sender_clone
+                                            .output(DictationWorkerOutput::AudioLevel(0.0));
+                                        let _ = sender_clone.output(
+                                            DictationWorkerOutput::StatusMessage(
+                                                "No speech detected".to_string(),
+                                            ),
+                                        );
+                                        let _ = sender_clone
+                                            .output(DictationWorkerOutput::NoSpeechDetected);
+                                    }
+                                    return;
+                                }
+                            }
+                            Err(e) => {
+                                if let Some(ref partial) = cached_partial
+                                    && !partial.raw_text.trim().is_empty()
+                                {
+                                    partial.raw_text.trim().to_string()
+                                } else {
+                                    if gate_proc.validate_and_tag(task_session_id) {
+                                        if let Ok(mut g) = state_proc.lock() {
+                                            *g = RecordingLifecycleState::Idle;
+                                        }
+                                        crate::services::crash_reporter::CrashReporter::record_event(
+                                            "AIEngine",
+                                            &format!("Transcription failed: {}", e),
+                                        );
+                                        let _ = sender_clone.output(DictationWorkerOutput::Error(
+                                            format!("AI error: {}", e),
+                                        ));
+                                    }
+                                    return;
+                                }
+                            }
+                        };
+
+                        if !gate_proc.is_valid_commit(task_session_id) {
+                            return;
+                        }
+
+                        let enhanced_text = if tone.eq_ignore_ascii_case("Raw") {
+                            raw_trimmed.clone()
+                        } else {
+                            match ai.enhance(&raw_trimmed, &tone).await {
+                                Ok(s) if !s.trim().is_empty() => s,
+                                Ok(_) => raw_trimmed.clone(),
+                                Err(_) => raw_trimmed.clone(),
+                            }
+                        };
+
+                        if !gate_proc.validate_and_tag(task_session_id) {
+                            return;
+                        }
+
+                        if let Ok(mut g) = state_proc.lock() {
+                            *g = RecordingLifecycleState::Idle;
+                        }
+
+                        let _ = storage.insert_dictation(
+                            &raw_trimmed,
+                            &enhanced_text,
+                            &tone,
+                            "dictation",
+                            duration,
+                        );
+
+                        let _ = sender_clone.output(DictationWorkerOutput::Success {
+                            raw_text: raw_trimmed,
+                            enhanced_text,
+                            duration_seconds: duration,
+                        });
+                    });
+                    self.processing_task = Some(proc_job.abort_handle());
+                    return;
+                }
 
                 let wav_bytes = match self.recorder.stop() {
                     Ok(bytes) => bytes,
@@ -529,21 +816,21 @@ impl Worker for DictationWorker {
                 ));
 
                 if wav_bytes.is_empty() || wav_bytes.len() <= 44 {
-                    if let Some((partial_raw, partial_enhanced)) = cached_partial
-                        && !partial_raw.trim().is_empty()
+                    if let Some(partial) = cached_partial
+                        && !partial.raw_text.trim().is_empty()
                     {
                         if self.session_gate.validate_and_tag(task_session_id) {
                             self.set_lifecycle_state(RecordingLifecycleState::Idle);
                             let _ = self.storage.insert_dictation(
-                                &partial_raw,
-                                &partial_enhanced,
+                                &partial.raw_text,
+                                &partial.enhanced_text,
                                 &tone,
                                 "dictation",
                                 duration,
                             );
                             let _ = sender.output(DictationWorkerOutput::Success {
-                                raw_text: partial_raw,
-                                enhanced_text: partial_enhanced,
+                                raw_text: partial.raw_text,
+                                enhanced_text: partial.enhanced_text,
                                 duration_seconds: duration,
                             });
                         }
@@ -589,10 +876,10 @@ impl Worker for DictationWorker {
                     let raw_trimmed = match raw_result {
                         Ok(raw_text) if !raw_text.trim().is_empty() => raw_text.trim().to_string(),
                         Ok(_) => {
-                            if let Some((ref partial_raw, _)) = cached_partial
-                                && !partial_raw.trim().is_empty()
+                            if let Some(ref partial) = cached_partial
+                                && !partial.raw_text.trim().is_empty()
                             {
-                                partial_raw.trim().to_string()
+                                partial.raw_text.trim().to_string()
                             } else {
                                 if gate_proc.validate_and_tag(task_session_id) {
                                     if let Ok(mut g) = state_proc.lock() {
@@ -615,10 +902,10 @@ impl Worker for DictationWorker {
                             }
                         }
                         Err(e) => {
-                            if let Some((ref partial_raw, _)) = cached_partial
-                                && !partial_raw.trim().is_empty()
+                            if let Some(ref partial) = cached_partial
+                                && !partial.raw_text.trim().is_empty()
                             {
-                                partial_raw.trim().to_string()
+                                partial.raw_text.trim().to_string()
                             } else {
                                 if gate_proc.validate_and_tag(task_session_id) {
                                     if let Ok(mut g) = state_proc.lock() {
