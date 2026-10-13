@@ -77,6 +77,16 @@
   </supports>
 
   <releases>
+    <release version="2.0.2" date="2026-10-13">
+      <description>
+        <p>Packaging and desktop integration maintenance release ensuring canonical single-launcher registration.</p>
+        <ul>
+          <li>Resolved duplicate application launchers in GNOME Applications grid by installing strictly canonical io.github.opendictate.OpenDictate.desktop</li>
+          <li>Maintained Quicklist actions for opening floating MiniBar and toggling dictation</li>
+          <li>Ensured clean upgrade removal of obsolete package-owned symlinks</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.0.1" date="2026-10-12">
       <description>
         <p>Reliability and performance release introducing dual-binary CPU dispatch and hardware microphone routing improvements.</p>

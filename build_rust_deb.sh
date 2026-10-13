@@ -2,8 +2,8 @@
 set -eo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="$(grep -m1 '^version = ' "$PROJECT_ROOT/Cargo.toml" | cut -d '"' -f2 2>/dev/null || echo "2.0.1")"
-[ -z "$VERSION" ] && VERSION="2.0.1"
+VERSION="$(grep -m1 '^version = ' "$PROJECT_ROOT/Cargo.toml" | cut -d '"' -f2 2>/dev/null || echo "2.0.2")"
+[ -z "$VERSION" ] && VERSION="2.0.2"
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo "amd64")"
 DIST_DIR="${DIST_DIR:-$PROJECT_ROOT/dist}"
 
