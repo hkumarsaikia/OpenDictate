@@ -5,7 +5,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERSION="$(grep -m1 '^version = ' "$PROJECT_ROOT/Cargo.toml" | cut -d '"' -f2 2>/dev/null || echo "2.0.1")"
 [ -z "$VERSION" ] && VERSION="2.0.1"
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo "amd64")"
-DIST_DIR="$PROJECT_ROOT/dist"
+DIST_DIR="${DIST_DIR:-$PROJECT_ROOT/dist}"
 
 VARIANT="universal"
 REBUILD=0
@@ -184,35 +184,12 @@ build_variant() {
     fi
 
 
-    # Install FreeDesktop desktop entries (both reverse-DNS and legacy names)
+    # Install FreeDesktop desktop entry (canonical reverse-DNS identifier)
     if [ -f "$PROJECT_ROOT/data/io.github.opendictate.OpenDictate.desktop" ]; then
         install -m 644 "$PROJECT_ROOT/data/io.github.opendictate.OpenDictate.desktop" "$build_dir/usr/share/applications/io.github.opendictate.OpenDictate.desktop"
-        ln -sf io.github.opendictate.OpenDictate.desktop "$build_dir/usr/share/applications/opendictate.desktop"
     else
-        cat << 'EOF' > "$build_dir/usr/share/applications/opendictate.desktop"
-[Desktop Entry]
-Name=OpenDictate
-GenericName=Voice Dictation & Meeting Intelligence
-Comment=Pure Rust Linux Voice Dictation, Meeting Transcriber, and AI Text Enhancement
-Exec=/usr/bin/opendictate %F
-Icon=opendictate
-Terminal=false
-Type=Application
-Categories=Utility;AudioVideo;Accessibility;
-Keywords=dictation;speech;voice;transcription;ai;groq;nvidia;gemini;
-StartupNotify=true
-StartupWMClass=opendictate
-Actions=MiniBar;Toggle;
-
-[Desktop Action MiniBar]
-Name=Open Floating Mini-Bar
-Exec=/usr/bin/opendictate --minibar
-
-[Desktop Action Toggle]
-Name=Toggle Dictation
-Exec=/usr/bin/opendictate --toggle
-EOF
-        chmod 644 "$build_dir/usr/share/applications/opendictate.desktop"
+        echo "Error: Canonical desktop file not found at $PROJECT_ROOT/data/io.github.opendictate.OpenDictate.desktop" >&2
+        exit 1
     fi
 
     # Install AppStream metainfo

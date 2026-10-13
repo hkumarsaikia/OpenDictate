@@ -479,3 +479,41 @@ fn test_dual_binary_packaging_and_amd64_platform_scope() {
         "build_rust_deb.sh must support --rebuild with isolated deb-rebuild-targets directories"
     );
 }
+
+#[test]
+fn test_debian_desktop_launcher_canonical_single_entry() {
+    let deb_content = fs::read_to_string(project_root().join("build_rust_deb.sh"))
+        .expect("read build_rust_deb.sh");
+
+    // 1. Verify canonical launcher installation path
+    assert!(
+        deb_content.contains("usr/share/applications/io.github.opendictate.OpenDictate.desktop"),
+        "build_rust_deb.sh must install canonical io.github.opendictate.OpenDictate.desktop"
+    );
+
+    // 2. Verify redundant opendictate.desktop symlink or fallback is completely removed
+    assert!(
+        !deb_content.contains("ln -sf io.github.opendictate.OpenDictate.desktop \"$build_dir/usr/share/applications/opendictate.desktop\""),
+        "build_rust_deb.sh must not create a redundant opendictate.desktop symlink"
+    );
+    assert!(
+        !deb_content.contains("usr/share/applications/opendictate.desktop"),
+        "build_rust_deb.sh must not reference or stage usr/share/applications/opendictate.desktop"
+    );
+
+    // 3. Verify canonical desktop file contains valid desktop actions and identity
+    let desktop_content = fs::read_to_string(project_root().join("data/io.github.opendictate.OpenDictate.desktop"))
+        .expect("read canonical desktop entry");
+    assert!(desktop_content.contains("Type=Application"));
+    assert!(desktop_content.contains("Name=OpenDictate"));
+    assert!(desktop_content.contains("Icon=io.github.opendictate.OpenDictate"));
+    assert!(desktop_content.contains("StartupWMClass=opendictate"));
+    assert!(desktop_content.contains("Exec=opendictate %U"));
+    assert!(desktop_content.contains("Actions=MiniBar;Toggle;"));
+    assert!(desktop_content.contains("[Desktop Action MiniBar]"));
+    assert!(desktop_content.contains("Exec=opendictate --minibar"));
+    assert!(desktop_content.contains("[Desktop Action Toggle]"));
+    assert!(desktop_content.contains("Exec=opendictate --toggle"));
+}
+
+
