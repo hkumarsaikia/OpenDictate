@@ -126,8 +126,11 @@ async fn test_hotkey_tokio_channel_dispatch() {
     assert_eq!(received2, Some(HotkeyAction::ToggleDictation));
 }
 
+static TRAY_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn test_opendictate_tray_properties_and_state_icons() {
+    let _lock = TRAY_TEST_MUTEX.lock().unwrap();
     use ksni::Tray;
 
     let mut tray = OpenDictateTray::new();
@@ -168,6 +171,7 @@ fn test_opendictate_tray_properties_and_state_icons() {
 
 #[test]
 fn test_opendictate_tray_flatpak_sandbox_detection_and_icon_resolution() {
+    let _lock = TRAY_TEST_MUTEX.lock().unwrap();
     use ksni::Tray;
 
     unsafe {
