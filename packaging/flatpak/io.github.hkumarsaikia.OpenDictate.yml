@@ -57,20 +57,26 @@ modules:
       - install -Dm644 src/ui/assets/brand/opendictate.svg /app/share/icons/hicolor/scalable/apps/opendictate.svg
       - install -Dm644 src/ui/assets/brand/opendictate-dark.svg /app/share/icons/hicolor/scalable/apps/opendictate-dark.svg
       - install -Dm644 src/ui/assets/brand/opendictate-light.svg /app/share/icons/hicolor/scalable/apps/opendictate-light.svg
+      - install -Dm644 src/ui/assets/brand/opendictate-dark.svg /app/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate-dark.svg
+      - install -Dm644 src/ui/assets/brand/opendictate-light.svg /app/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate-light.svg
       - install -Dm644 src/ui/assets/brand/png/16x16.png /app/share/icons/hicolor/16x16/apps/io.github.hkumarsaikia.OpenDictate.png
       - install -Dm644 src/ui/assets/brand/png/24x24.png /app/share/icons/hicolor/24x24/apps/io.github.hkumarsaikia.OpenDictate.png
       - install -Dm644 src/ui/assets/brand/png/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.hkumarsaikia.OpenDictate.png
       - install -Dm644 src/ui/assets/brand/png/48x48.png /app/share/icons/hicolor/48x48/apps/io.github.hkumarsaikia.OpenDictate.png
       - install -Dm644 src/ui/assets/brand/png/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.hkumarsaikia.OpenDictate.png
       - install -Dm644 src/ui/assets/brand/png/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.hkumarsaikia.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.hkumarsaikia.OpenDictate-dark.png
+      - install -Dm644 src/ui/assets/brand/png-light/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.hkumarsaikia.OpenDictate-light.png
       - install -Dm644 src/ui/assets/brand/png/128x128.png /app/share/icons/hicolor/128x128/apps/opendictate-dark.png
       - install -Dm644 src/ui/assets/brand/png-light/128x128.png /app/share/icons/hicolor/128x128/apps/opendictate-light.png
       - install -Dm644 src/ui/assets/brand/png/256x256.png /app/share/icons/hicolor/256x256/apps/io.github.hkumarsaikia.OpenDictate.png
       - install -Dm644 src/ui/assets/brand/png/512x512.png /app/share/icons/hicolor/512x512/apps/io.github.hkumarsaikia.OpenDictate.png
+      - install -Dm644 src/ui/assets/brand/png/512x512.png /app/share/icons/hicolor/512x512/apps/io.github.hkumarsaikia.OpenDictate-dark.png
+      - install -Dm644 src/ui/assets/brand/png-light/512x512.png /app/share/icons/hicolor/512x512/apps/io.github.hkumarsaikia.OpenDictate-light.png
       - install -Dm644 src/ui/assets/brand/png/512x512.png /app/share/icons/hicolor/512x512/apps/opendictate-dark.png
       - install -Dm644 src/ui/assets/brand/png-light/512x512.png /app/share/icons/hicolor/512x512/apps/opendictate-light.png
     sources:
       - type: git
         url: https://github.com/hkumarsaikia/OpenDictate.git
-        commit: f43f296a4a97c7f7f54a0c0d2ef9d1e4b477e041
+        commit: 3ecd1684cbfd8a4e8d89308aeb851416efce559e
       - cargo-sources.json

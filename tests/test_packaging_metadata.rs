@@ -178,8 +178,13 @@ fn test_flatpak_offline_rust_build_and_sources() {
         "Flatpak manifest must reference canonical repository URL"
     );
     assert!(
-        content.contains("commit: f43f296a4a97c7f7f54a0c0d2ef9d1e4b477e041"),
-        "Flatpak manifest must pin commit f43f296a4a97c7f7f54a0c0d2ef9d1e4b477e041"
+        content.contains("commit: 3ecd1684cbfd8a4e8d89308aeb851416efce559e"),
+        "Flatpak manifest must pin commit 3ecd1684cbfd8a4e8d89308aeb851416efce559e"
+    );
+    assert!(
+        content.contains("io.github.hkumarsaikia.OpenDictate-dark.svg")
+            && content.contains("io.github.hkumarsaikia.OpenDictate-light.svg"),
+        "Flatpak manifest must install application-id prefixed dark and light SVG icons for host export"
     );
 
     // Must include cargo-sources.json
@@ -678,7 +683,7 @@ fn test_flatpak_json_manifest_core_and_sandbox() {
     );
     assert_eq!(
         git_source["commit"].as_str().unwrap_or_default(),
-        "f43f296a4a97c7f7f54a0c0d2ef9d1e4b477e041"
+        "3ecd1684cbfd8a4e8d89308aeb851416efce559e"
     );
 
     assert!(
