@@ -178,12 +178,8 @@ fn test_flatpak_offline_rust_build_and_sources() {
         "Flatpak manifest must reference canonical repository URL"
     );
     assert!(
-        content.contains("tag: v2.0.2"),
-        "Flatpak manifest must pin release tag v2.0.2"
-    );
-    assert!(
-        content.contains("commit: c1c4005612b2aa378c4352593d42ab036819c035"),
-        "Flatpak manifest must pin commit c1c4005612b2aa378c4352593d42ab036819c035"
+        content.contains("commit: f43f296a4a97c7f7f54a0c0d2ef9d1e4b477e041"),
+        "Flatpak manifest must pin commit f43f296a4a97c7f7f54a0c0d2ef9d1e4b477e041"
     );
 
     // Must include cargo-sources.json
@@ -681,12 +677,8 @@ fn test_flatpak_json_manifest_core_and_sandbox() {
         "https://github.com/hkumarsaikia/OpenDictate.git"
     );
     assert_eq!(
-        git_source["tag"].as_str().unwrap_or_default(),
-        "v2.0.2"
-    );
-    assert_eq!(
         git_source["commit"].as_str().unwrap_or_default(),
-        "c1c4005612b2aa378c4352593d42ab036819c035"
+        "f43f296a4a97c7f7f54a0c0d2ef9d1e4b477e041"
     );
 
     assert!(
