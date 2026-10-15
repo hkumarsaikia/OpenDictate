@@ -178,8 +178,8 @@ fn test_flatpak_offline_rust_build_and_sources() {
         "Flatpak manifest must reference canonical repository URL"
     );
     assert!(
-        content.contains("commit: 3ecd1684cbfd8a4e8d89308aeb851416efce559e"),
-        "Flatpak manifest must pin commit 3ecd1684cbfd8a4e8d89308aeb851416efce559e"
+        content.contains("commit: 81639fd1d1bbcb42bb01c3d04c8fcf138e6e885b"),
+        "Flatpak manifest must pin commit 81639fd1d1bbcb42bb01c3d04c8fcf138e6e885b"
     );
     assert!(
         content.contains("io.github.hkumarsaikia.OpenDictate-dark.svg")
@@ -683,7 +683,7 @@ fn test_flatpak_json_manifest_core_and_sandbox() {
     );
     assert_eq!(
         git_source["commit"].as_str().unwrap_or_default(),
-        "3ecd1684cbfd8a4e8d89308aeb851416efce559e"
+        "81639fd1d1bbcb42bb01c3d04c8fcf138e6e885b"
     );
 
     assert!(
