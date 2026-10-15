@@ -141,7 +141,11 @@ impl OpenDictateTray {
 
 impl Tray for OpenDictateTray {
     fn id(&self) -> String {
-        "opendictate".to_string()
+        if TrayService::is_flatpak() {
+            "io.github.hkumarsaikia.OpenDictate".to_string()
+        } else {
+            "opendictate".to_string()
+        }
     }
 
     fn title(&self) -> String {
@@ -149,6 +153,9 @@ impl Tray for OpenDictateTray {
     }
 
     fn icon_theme_path(&self) -> String {
+        if TrayService::is_flatpak() {
+            return String::new();
+        }
         let manifest_icons = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ui/assets/brand/icons/hicolor/scalable/apps");
         if manifest_icons.exists() {
@@ -168,7 +175,13 @@ impl Tray for OpenDictateTray {
     fn icon_name(&self) -> String {
         match self.state {
             TrayState::Idle => {
-                if self.is_dark_theme {
+                if TrayService::is_flatpak() {
+                    if self.is_dark_theme {
+                        "io.github.hkumarsaikia.OpenDictate-dark".to_string()
+                    } else {
+                        "io.github.hkumarsaikia.OpenDictate-light".to_string()
+                    }
+                } else if self.is_dark_theme {
                     "opendictate-dark".to_string()
                 } else {
                     "opendictate-light".to_string()
@@ -255,11 +268,20 @@ impl Tray for OpenDictateTray {
 pub struct TrayService;
 
 impl TrayService {
+    /// Returns true if the application is running inside a Flatpak container sandbox.
+    pub fn is_flatpak() -> bool {
+        std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists()
+    }
+
     /// Spawns the system tray in a background thread and returns the `ksni::Handle`.
     pub fn spawn(tray: OpenDictateTray) -> ksni::Handle<OpenDictateTray> {
         let service = ksni::TrayService::new(tray);
         let handle = service.handle();
-        service.spawn();
+        if Self::is_flatpak() {
+            service.spawn_without_dbus_name();
+        } else {
+            service.spawn();
+        }
         handle
     }
 
@@ -267,8 +289,14 @@ impl TrayService {
     pub fn try_spawn(tray: OpenDictateTray) -> Result<ksni::Handle<OpenDictateTray>, String> {
         let service = ksni::TrayService::new(tray);
         let handle = service.handle();
+        let in_flatpak = Self::is_flatpak();
         std::thread::spawn(move || {
-            if let Err(e) = service.run() {
+            let res = if in_flatpak {
+                service.run_without_dbus_name()
+            } else {
+                service.run()
+            };
+            if let Err(e) = res {
                 log::warn!("DBus TrayService stopped: {:?}", e);
             }
         });

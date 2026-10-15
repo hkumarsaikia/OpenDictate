@@ -6,7 +6,7 @@
 
 use opendictate::cli::CliArgs;
 use opendictate::services::hotkey::{HotkeyAction, HotkeyError, HotkeyService};
-use opendictate::services::tray::{OpenDictateTray, TrayCallbacks, TrayState};
+use opendictate::services::tray::{OpenDictateTray, TrayCallbacks, TrayService, TrayState};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -164,6 +164,29 @@ fn test_opendictate_tray_properties_and_state_icons() {
     tray.set_state(TrayState::Processing);
     assert_eq!(tray.state(), TrayState::Processing);
     assert_eq!(tray.icon_name(), "process-working-symbolic");
+}
+
+#[test]
+fn test_opendictate_tray_flatpak_sandbox_detection_and_icon_resolution() {
+    use ksni::Tray;
+
+    unsafe {
+        std::env::set_var("FLATPAK_ID", "io.github.hkumarsaikia.OpenDictate");
+    }
+
+    assert!(TrayService::is_flatpak());
+
+    let mut tray = OpenDictateTray::new();
+    assert_eq!(tray.id(), "io.github.hkumarsaikia.OpenDictate");
+    assert_eq!(tray.icon_theme_path(), "");
+    assert_eq!(tray.icon_name(), "io.github.hkumarsaikia.OpenDictate-dark");
+
+    tray.set_dark_theme(false);
+    assert_eq!(tray.icon_name(), "io.github.hkumarsaikia.OpenDictate-light");
+
+    unsafe {
+        std::env::remove_var("FLATPAK_ID");
+    }
 }
 
 #[test]

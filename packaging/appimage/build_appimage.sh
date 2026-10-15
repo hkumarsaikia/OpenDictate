@@ -131,6 +131,8 @@ install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$APP_DIR/usr
 install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$APP_DIR/usr/share/icons/hicolor/scalable/apps/opendictate.svg"
 install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate-dark.svg" "$APP_DIR/usr/share/icons/hicolor/scalable/apps/opendictate-dark.svg"
 install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate-light.svg" "$APP_DIR/usr/share/icons/hicolor/scalable/apps/opendictate-light.svg"
+install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate-dark.svg" "$APP_DIR/usr/share/icons/hicolor/scalable/apps/$APP_ID-dark.svg"
+install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate-light.svg" "$APP_DIR/usr/share/icons/hicolor/scalable/apps/$APP_ID-light.svg"
 install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$APP_DIR/$APP_ID.svg"
 cp -f "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$APP_DIR/.DirIcon"
 
@@ -140,10 +142,12 @@ for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
     if [ -f "$png_file" ]; then
         mkdir -p "$APP_DIR/usr/share/icons/hicolor/${size}/apps"
         install -m 644 "$png_file" "$APP_DIR/usr/share/icons/hicolor/${size}/apps/$APP_ID.png"
+        install -m 644 "$png_file" "$APP_DIR/usr/share/icons/hicolor/${size}/apps/$APP_ID-dark.png"
         install -m 644 "$png_file" "$APP_DIR/usr/share/icons/hicolor/${size}/apps/opendictate-dark.png"
     fi
     if [ -f "$png_light_file" ]; then
         mkdir -p "$APP_DIR/usr/share/icons/hicolor/${size}/apps"
+        install -m 644 "$png_light_file" "$APP_DIR/usr/share/icons/hicolor/${size}/apps/$APP_ID-light.png"
         install -m 644 "$png_light_file" "$APP_DIR/usr/share/icons/hicolor/${size}/apps/opendictate-light.png"
     fi
 done

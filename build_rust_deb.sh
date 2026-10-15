@@ -204,16 +204,27 @@ build_variant() {
     echo "Installing application icons..."
     install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$build_dir/usr/share/icons/hicolor/scalable/apps/opendictate.svg"
     install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$build_dir/usr/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate.svg"
+    install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate-dark.svg" "$build_dir/usr/share/icons/hicolor/scalable/apps/opendictate-dark.svg"
+    install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate-light.svg" "$build_dir/usr/share/icons/hicolor/scalable/apps/opendictate-light.svg"
+    install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate-dark.svg" "$build_dir/usr/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate-dark.svg"
+    install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate-light.svg" "$build_dir/usr/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate-light.svg"
 
     for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
         local png_file="$PROJECT_ROOT/src/ui/assets/brand/png/${size}.png"
+        local png_light_file="$PROJECT_ROOT/src/ui/assets/brand/png-light/${size}.png"
         if [ -f "$png_file" ]; then
             mkdir -p "$build_dir/usr/share/icons/hicolor/${size}/apps"
             install -m 644 "$png_file" "$build_dir/usr/share/icons/hicolor/${size}/apps/opendictate.png"
+            install -m 644 "$png_file" "$build_dir/usr/share/icons/hicolor/${size}/apps/opendictate-dark.png"
             install -m 644 "$png_file" "$build_dir/usr/share/icons/hicolor/${size}/apps/io.github.hkumarsaikia.OpenDictate.png"
+            install -m 644 "$png_file" "$build_dir/usr/share/icons/hicolor/${size}/apps/io.github.hkumarsaikia.OpenDictate-dark.png"
         else
             echo "Error: Missing brand PNG icon for $size: $png_file" >&2
             exit 1
+        fi
+        if [ -f "$png_light_file" ]; then
+            install -m 644 "$png_light_file" "$build_dir/usr/share/icons/hicolor/${size}/apps/opendictate-light.png"
+            install -m 644 "$png_light_file" "$build_dir/usr/share/icons/hicolor/${size}/apps/io.github.hkumarsaikia.OpenDictate-light.png"
         fi
     done
 

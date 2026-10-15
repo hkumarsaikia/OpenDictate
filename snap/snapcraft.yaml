@@ -145,8 +145,12 @@ parts:
       install -Dm644 src/ui/assets/brand/opendictate.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/opendictate.svg
       install -Dm644 src/ui/assets/brand/opendictate-dark.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/opendictate-dark.svg
       install -Dm644 src/ui/assets/brand/opendictate-light.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/opendictate-light.svg
+      install -Dm644 src/ui/assets/brand/opendictate-dark.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate-dark.svg
+      install -Dm644 src/ui/assets/brand/opendictate-light.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate-light.svg
       for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
         install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/io.github.hkumarsaikia.OpenDictate.png
+        install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/io.github.hkumarsaikia.OpenDictate-dark.png
+        install -Dm644 src/ui/assets/brand/png-light/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/io.github.hkumarsaikia.OpenDictate-light.png
         install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-dark.png
         install -Dm644 src/ui/assets/brand/png-light/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-light.png
       done
