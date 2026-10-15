@@ -240,7 +240,7 @@ fn test_snapcraft_manifest_core_attributes() {
 
     let version = extract_top_level_yaml_value(&content, "version")
         .expect("Missing version in Snapcraft manifest");
-    assert_eq!(version, "2.0.2", "Snap version must be 2.0.2");
+    assert_eq!(version, "2.0.3", "Snap version must be 2.0.3");
 }
 
 #[test]
@@ -302,8 +302,12 @@ fn test_appstream_metainfo_metadata() {
         "AppStream metadata must specify name 'OpenDictate'"
     );
     assert!(
+        content.contains("<release version=\"2.0.3\""),
+        "AppStream metadata must specify release version 2.0.3"
+    );
+    assert!(
         content.contains("<release version=\"2.0.2\""),
-        "AppStream metadata must specify release version 2.0.2"
+        "AppStream metadata must preserve historical release version 2.0.2"
     );
 
     // Verify all 4 screenshot files referenced in metainfo.xml exist in docs/screenshots/
@@ -351,7 +355,7 @@ fn test_cross_packaging_consistency() {
 
     let expected_app_id = "io.github.hkumarsaikia.OpenDictate";
     let expected_binary = "opendictate";
-    let expected_version = "2.0.2";
+    let expected_version = "2.0.3";
 
     // App ID consistency
     assert!(flatpak_content.contains(&format!("app-id: {}", expected_app_id)));

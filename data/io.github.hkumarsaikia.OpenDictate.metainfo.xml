@@ -77,6 +77,17 @@
   </supports>
 
   <releases>
+    <release version="2.0.3" date="2026-10-15">
+      <description>
+        <p>Packaging alignment and system tray sandbox compatibility release.</p>
+        <ul>
+          <li>Migrated application identity and reverse-DNS namespace to canonical io.github.hkumarsaikia.OpenDictate across packaging targets</li>
+          <li>Enhanced system tray integration in Flatpak sandbox environments with unique D-Bus StatusNotifierItem registration</li>
+          <li>Exported complete icon suite for light and dark desktop themes into sandbox export paths</li>
+          <li>Synchronized packaging metadata and hardened environment-dependent tray test execution</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.0.2" date="2026-10-13">
       <description>
         <p>Packaging and desktop integration maintenance release ensuring canonical single-launcher registration.</p>
