@@ -87,7 +87,7 @@
         {
           "type": "git",
           "url": "https://github.com/hkumarsaikia/OpenDictate.git",
-          "commit": "81639fd1d1bbcb42bb01c3d04c8fcf138e6e885b"
+          "commit": "81639fdb98624d073aa70b583cb9ef6d86a32495"
         },
         "cargo-sources.json"
       ]
