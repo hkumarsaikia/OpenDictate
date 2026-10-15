@@ -1,5 +1,5 @@
 //! Tests for Main Menu in-popover sliding stack navigation, 25-language picker, history viewer,
-//! MiniBar zoom controls, and About / Buy Me a Coffee dialogs.
+//! MiniBar zoom controls, and About / Sponsor on GitHub dialogs.
 
 use gtk4::prelude::*;
 use libadwaita::prelude::*;
@@ -7,7 +7,8 @@ use opendictate::config::Config;
 use opendictate::services::i18n::get_languages;
 use opendictate::services::storage::StorageService;
 use opendictate::ui::main_window::header::{
-    build_about_dialog, build_buy_me_a_coffee_dialog, build_header_bar, format_history_snippet,
+    build_about_dialog, build_github_sponsors_url, build_header_bar, build_sponsor_dialog,
+    format_history_snippet, parse_custom_sponsor_amount, MAX_SPONSOR_AMOUNT, MIN_SPONSOR_AMOUNT,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -345,7 +346,7 @@ fn test_history_page_empty_and_populated_and_delete() {
 }
 
 #[test]
-fn test_about_dialog_details_credits_and_buy_me_a_coffee() {
+fn test_about_dialog_details_credits_and_sponsor_on_github() {
     if gtk4::is_initialized_main_thread() || (!gtk4::is_initialized() && gtk4::init().is_ok()) {
         let _ = libadwaita::init();
 
@@ -464,18 +465,22 @@ fn test_about_dialog_details_credits_and_buy_me_a_coffee() {
             );
         }
 
-        // Verify "Buy me a coffee" ActionRow is present below Acknowledgements on the About main page
+        // Verify "Sponsor on GitHub" ActionRow is present below Acknowledgements on the About main page
         assert!(
-            has_action_row(&about_root, "Buy me a coffee"),
-            "About dialog must contain 'Buy me a coffee' ActionRow below Acknowledgements"
+            has_action_row(&about_root, "Sponsor on GitHub"),
+            "About dialog must contain 'Sponsor on GitHub' ActionRow below Acknowledgements"
+        );
+        assert!(
+            !has_action_row(&about_root, "Buy me a coffee"),
+            "About dialog must not contain stale 'Buy me a coffee' ActionRow"
         );
 
-        // Verify Buy Me a Coffee dialog structure (subtitle removed, EntryRow titled "Custom amount")
-        let coffee_dlg = build_buy_me_a_coffee_dialog();
-        assert_eq!(coffee_dlg.title().as_str(), "Buy Me a Coffee");
-        let coffee_root = coffee_dlg
+        // Verify Sponsor on GitHub dialog structure (subtitle removed, EntryRow titled "Custom amount")
+        let sponsor_dlg = build_sponsor_dialog();
+        assert_eq!(sponsor_dlg.title().as_str(), "Sponsor on GitHub");
+        let sponsor_root = sponsor_dlg
             .child()
-            .unwrap_or_else(|| coffee_dlg.clone().upcast::<gtk4::Widget>());
+            .unwrap_or_else(|| sponsor_dlg.clone().upcast::<gtk4::Widget>());
         fn has_entry_row(w: &gtk4::Widget, title: &str) -> bool {
             if let Some(row) = w.downcast_ref::<libadwaita::EntryRow>()
                 && row.title().as_str() == title
@@ -507,16 +512,342 @@ fn test_about_dialog_details_credits_and_buy_me_a_coffee() {
             false
         }
         assert!(
-            has_entry_row(&coffee_root, "Custom amount"),
-            "Buy Me a Coffee dialog must have EntryRow titled 'Custom amount'"
+            has_entry_row(&sponsor_root, "Custom amount"),
+            "Sponsor dialog must have EntryRow titled 'Custom amount'"
         );
         assert!(
-            !has_entry_row(&coffee_root, "Custom amount in dollars ($)"),
+            !has_entry_row(&sponsor_root, "Custom amount in dollars ($)"),
             "Old title 'Custom amount in dollars ($)' must be removed"
         );
         assert!(
-            !has_label_containing(&coffee_root, "Fuel independent open-source"),
-            "Subtitle sentence must be removed from Buy Me a Coffee dialog"
+            !has_label_containing(&sponsor_root, "Fuel independent open-source"),
+            "Subtitle sentence must be removed from Sponsor dialog"
+        );
+        assert!(
+            !has_label_containing(&sponsor_root, "Buy Me a Coffee"),
+            "Stale 'Buy Me a Coffee' label must not be present in Sponsor dialog"
+        );
+        assert!(
+            !has_label_containing(&sponsor_root, "buymeacoffee"),
+            "Stale 'buymeacoffee' text must not be present in Sponsor dialog"
         );
     }
 }
+
+#[test]
+fn test_sponsor_amount_parsing_and_validation() {
+    // 1. Valid preset values (consistent with whole-dollar tiers)
+    assert_eq!(parse_custom_sponsor_amount("2"), Some(2));
+    assert_eq!(parse_custom_sponsor_amount("5"), Some(5));
+    assert_eq!(parse_custom_sponsor_amount("10"), Some(10));
+    assert_eq!(parse_custom_sponsor_amount("20"), Some(20));
+
+    // Smallest accepted whole-dollar amount ($1)
+    assert_eq!(parse_custom_sponsor_amount("1"), Some(1));
+    assert_eq!(
+        parse_custom_sponsor_amount(&MIN_SPONSOR_AMOUNT.to_string()),
+        Some(MIN_SPONSOR_AMOUNT)
+    );
+
+    // Mid-range valid custom positive whole-dollar integer input
+    assert_eq!(parse_custom_sponsor_amount("42"), Some(42));
+    assert_eq!(parse_custom_sponsor_amount("100"), Some(100));
+    assert_eq!(parse_custom_sponsor_amount("  250  "), Some(250)); // handles leading/trailing whitespace
+    assert_eq!(parse_custom_sponsor_amount("1000"), Some(1000));
+    assert_eq!(parse_custom_sponsor_amount("11999"), Some(11999));
+
+    // Largest accepted whole-dollar amount ($12,000)
+    assert_eq!(parse_custom_sponsor_amount("12000"), Some(12000));
+    assert_eq!(
+        parse_custom_sponsor_amount(&MAX_SPONSOR_AMOUNT.to_string()),
+        Some(MAX_SPONSOR_AMOUNT)
+    );
+
+    // Immediately above supported maximum ($12,001)
+    assert_eq!(parse_custom_sponsor_amount("12001"), None);
+    assert_eq!(
+        parse_custom_sponsor_amount(&(MAX_SPONSOR_AMOUNT + 1).to_string()),
+        None
+    );
+
+    // Amounts significantly exceeding maximum
+    assert_eq!(parse_custom_sponsor_amount("15000"), None);
+    assert_eq!(parse_custom_sponsor_amount("50000"), None);
+    assert_eq!(parse_custom_sponsor_amount("1000000"), None);
+
+    // Clearing a previously valid custom amount
+    assert_eq!(parse_custom_sponsor_amount(""), None);
+
+    // Empty custom input
+    assert_eq!(parse_custom_sponsor_amount(""), None);
+    assert_eq!(parse_custom_sponsor_amount("   "), None);
+    assert_eq!(parse_custom_sponsor_amount("\t\n"), None);
+
+    // Zero and negative values
+    assert_eq!(parse_custom_sponsor_amount("0"), None);
+    assert_eq!(parse_custom_sponsor_amount("00"), None);
+    assert_eq!(parse_custom_sponsor_amount("-1"), None);
+    assert_eq!(parse_custom_sponsor_amount("-5"), None);
+    assert_eq!(parse_custom_sponsor_amount("-0"), None);
+    assert_eq!(parse_custom_sponsor_amount("-12000"), None);
+
+    // Decimal and malformed input (MUST NOT silently strip '.' or convert to different amount)
+    assert_eq!(parse_custom_sponsor_amount("1.0"), None);
+    assert_eq!(parse_custom_sponsor_amount("5.0"), None);
+    assert_eq!(parse_custom_sponsor_amount("5.50"), None);
+    assert_eq!(parse_custom_sponsor_amount("12000.0"), None);
+    assert_eq!(parse_custom_sponsor_amount("12000.50"), None);
+    assert_eq!(parse_custom_sponsor_amount("5."), None);
+    assert_eq!(parse_custom_sponsor_amount(".5"), None);
+    assert_eq!(parse_custom_sponsor_amount("5.0.0"), None);
+    assert_eq!(parse_custom_sponsor_amount("$5"), None);
+    assert_eq!(parse_custom_sponsor_amount("$12000"), None);
+    assert_eq!(parse_custom_sponsor_amount("5$"), None);
+    assert_eq!(parse_custom_sponsor_amount("5 0"), None);
+    assert_eq!(parse_custom_sponsor_amount("1,000"), None);
+    assert_eq!(parse_custom_sponsor_amount("12,000"), None);
+
+    // Alphabetic input
+    assert_eq!(parse_custom_sponsor_amount("abc"), None);
+    assert_eq!(parse_custom_sponsor_amount("five"), None);
+    assert_eq!(parse_custom_sponsor_amount("5usd"), None);
+    assert_eq!(parse_custom_sponsor_amount("usd5"), None);
+    assert_eq!(parse_custom_sponsor_amount("12k"), None);
+    assert_eq!(parse_custom_sponsor_amount("NaN"), None);
+
+    // Numeric overflow (larger than u32::MAX)
+    assert_eq!(parse_custom_sponsor_amount("4294967296"), None);
+    assert_eq!(parse_custom_sponsor_amount("999999999999999999999999999999"), None);
+    assert_eq!(
+        parse_custom_sponsor_amount(&format!("{}", u64::from(u32::MAX) + 1)),
+        None
+    );
+}
+
+#[test]
+fn test_sponsor_url_construction_and_stale_prevention() {
+    // Ensuring invalid, absent, or out-of-range amounts cannot produce a sponsorship URL
+    assert_eq!(build_github_sponsors_url(None), None);
+    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("")), None);
+    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("0")), None);
+    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("12001")), None);
+    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("invalid")), None);
+    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("5.50")), None);
+
+    // Ensuring direct out-of-range Option<u32> values cannot construct a URL
+    assert_eq!(build_github_sponsors_url(Some(0)), None);
+    assert_eq!(build_github_sponsors_url(Some(12_001)), None);
+    assert_eq!(build_github_sponsors_url(Some(50_000)), None);
+    assert_eq!(build_github_sponsors_url(Some(u32::MAX)), None);
+
+    // Ensuring the displayed amount matches the amount that would be sent to GitHub
+    assert_eq!(
+        build_github_sponsors_url(Some(1)),
+        Some("https://github.com/sponsors/hkumarsaikia?amount=1".to_string())
+    );
+    assert_eq!(
+        build_github_sponsors_url(Some(MIN_SPONSOR_AMOUNT)),
+        Some(format!(
+            "https://github.com/sponsors/hkumarsaikia?amount={}",
+            MIN_SPONSOR_AMOUNT
+        ))
+    );
+    assert_eq!(
+        build_github_sponsors_url(Some(2)),
+        Some("https://github.com/sponsors/hkumarsaikia?amount=2".to_string())
+    );
+    assert_eq!(
+        build_github_sponsors_url(Some(5)),
+        Some("https://github.com/sponsors/hkumarsaikia?amount=5".to_string())
+    );
+    assert_eq!(
+        build_github_sponsors_url(Some(10)),
+        Some("https://github.com/sponsors/hkumarsaikia?amount=10".to_string())
+    );
+    assert_eq!(
+        build_github_sponsors_url(Some(20)),
+        Some("https://github.com/sponsors/hkumarsaikia?amount=20".to_string())
+    );
+    assert_eq!(
+        build_github_sponsors_url(Some(50)),
+        Some("https://github.com/sponsors/hkumarsaikia?amount=50".to_string())
+    );
+    assert_eq!(
+        build_github_sponsors_url(Some(12_000)),
+        Some("https://github.com/sponsors/hkumarsaikia?amount=12000".to_string())
+    );
+    assert_eq!(
+        build_github_sponsors_url(Some(MAX_SPONSOR_AMOUNT)),
+        Some(format!(
+            "https://github.com/sponsors/hkumarsaikia?amount={}",
+            MAX_SPONSOR_AMOUNT
+        ))
+    );
+
+    // Verify canonical URL preserves existing parameter schema (no frequency parameter added)
+    let url = build_github_sponsors_url(Some(15)).unwrap();
+    assert!(url.starts_with("https://github.com/sponsors/hkumarsaikia?amount="));
+    assert!(!url.contains("frequency="));
+}
+
+#[test]
+fn test_sponsor_dialog_amount_state_and_ui_transitions() {
+    if gtk4::is_initialized_main_thread() || (!gtk4::is_initialized() && gtk4::init().is_ok()) {
+        let _ = libadwaita::init();
+
+        let sponsor_dlg = build_sponsor_dialog();
+        let root = sponsor_dlg
+            .child()
+            .unwrap_or_else(|| sponsor_dlg.clone().upcast::<gtk4::Widget>());
+
+        fn find_toggle_buttons(w: &gtk4::Widget, list: &mut Vec<gtk4::ToggleButton>) {
+            if let Some(tb) = w.downcast_ref::<gtk4::ToggleButton>() {
+                list.push(tb.clone());
+            }
+            let mut child = w.first_child();
+            while let Some(c) = child {
+                find_toggle_buttons(&c, list);
+                child = c.next_sibling();
+            }
+        }
+
+        fn find_entry_row(w: &gtk4::Widget) -> Option<libadwaita::EntryRow> {
+            if let Some(entry) = w.downcast_ref::<libadwaita::EntryRow>() {
+                return Some(entry.clone());
+            }
+            let mut child = w.first_child();
+            while let Some(c) = child {
+                if let Some(found) = find_entry_row(&c) {
+                    return Some(found);
+                }
+                child = c.next_sibling();
+            }
+            None
+        }
+
+        fn find_cta_button(w: &gtk4::Widget) -> Option<gtk4::Button> {
+            if let Some(btn) = w.downcast_ref::<gtk4::Button>()
+                && btn.has_css_class("suggested-action")
+            {
+                return Some(btn.clone());
+            }
+            let mut child = w.first_child();
+            while let Some(c) = child {
+                if let Some(found) = find_cta_button(&c) {
+                    return Some(found);
+                }
+                child = c.next_sibling();
+            }
+            None
+        }
+
+        fn has_label_containing(w: &gtk4::Widget, needle: &str) -> bool {
+            if let Some(lbl) = w.downcast_ref::<gtk4::Label>()
+                && lbl.text().contains(needle)
+            {
+                return true;
+            }
+            let mut child = w.first_child();
+            while let Some(c) = child {
+                if has_label_containing(&c, needle) {
+                    return true;
+                }
+                child = c.next_sibling();
+            }
+            false
+        }
+
+        // Verify preset buttons do NOT contain unverified tier titles (Supporter, Backer, etc.)
+        assert!(
+            !has_label_containing(&root, "Supporter"),
+            "Preset buttons must not contain unverified tier label 'Supporter'"
+        );
+        assert!(
+            !has_label_containing(&root, "Backer"),
+            "Preset buttons must not contain unverified tier label 'Backer'"
+        );
+        assert!(
+            !has_label_containing(&root, "Bronze Sponsor"),
+            "Preset buttons must not contain unverified tier label 'Bronze Sponsor'"
+        );
+        assert!(
+            !has_label_containing(&root, "Silver Sponsor"),
+            "Preset buttons must not contain unverified tier label 'Silver Sponsor'"
+        );
+
+        let mut toggles = Vec::new();
+        find_toggle_buttons(&root, &mut toggles);
+        assert_eq!(toggles.len(), 4, "Must have 4 preset toggle buttons");
+
+        let entry = find_entry_row(&root).expect("Must have custom amount EntryRow");
+        let cta_btn = find_cta_button(&root).expect("Must have suggested-action CTA button");
+
+        // 1. Initial State: $5 preset selected, CTA enabled, label "Sponsor $5 on GitHub 💖"
+        assert!(toggles[1].is_active(), "Default preset $5 must be active");
+        assert!(cta_btn.is_sensitive(), "CTA button must be sensitive initially");
+        assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $5 on GitHub 💖"));
+        assert_eq!(entry.text().as_str(), "");
+
+        // 2. Switching between preset amounts: click $10 (index 2)
+        toggles[2].set_active(true);
+        assert!(toggles[2].is_active());
+        assert!(!toggles[1].is_active());
+        assert!(cta_btn.is_sensitive());
+        assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $10 on GitHub 💖"));
+        assert_eq!(entry.text().as_str(), "");
+
+        // 3. Valid custom amount: enter "25"
+        entry.set_text("25");
+        assert!(!toggles[2].is_active(), "Preset toggles must be inactive when custom amount is entered");
+        assert!(cta_btn.is_sensitive());
+        assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $25 on GitHub 💖"));
+
+        // 4. Minimum accepted whole-dollar amount: enter "1"
+        entry.set_text("1");
+        assert!(cta_btn.is_sensitive());
+        assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $1 on GitHub 💖"));
+
+        // 5. Maximum supported amount: enter "12000"
+        entry.set_text("12000");
+        assert!(cta_btn.is_sensitive());
+        assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $12000 on GitHub 💖"));
+
+        // 6. Immediately above maximum supported amount: enter "12001"
+        entry.set_text("12001");
+        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for amount exceeding $12,000");
+        assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
+
+        // 7. Clearing a previously valid custom amount
+        entry.set_text("");
+        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled when custom amount is cleared");
+        assert_eq!(cta_btn.label().as_deref(), Some("Select an amount to sponsor"));
+
+        // 8. Zero value
+        entry.set_text("0");
+        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for zero amount");
+        assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
+
+        // 9. Decimal input
+        entry.set_text("12.50");
+        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for decimal amount");
+        assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
+
+        // 10. Alphabetic input
+        entry.set_text("fifty");
+        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for alphabetic amount");
+        assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
+
+        // 11. Overflow input
+        entry.set_text("99999999999999999999999");
+        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for overflow amount");
+        assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
+
+        // Re-selecting a preset: click $20 (index 3)
+        toggles[3].set_active(true);
+        assert!(toggles[3].is_active());
+        assert!(cta_btn.is_sensitive());
+        assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $20 on GitHub 💖"));
+        assert_eq!(entry.text().as_str(), "", "Selecting a preset must clear the custom entry field");
+    }
+}
+

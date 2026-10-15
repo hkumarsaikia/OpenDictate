@@ -22,8 +22,8 @@ platforms:
 apps:
   opendictate:
     command: usr/bin/opendictate
-    desktop: usr/share/applications/io.github.opendictate.OpenDictate.desktop
-    common-id: io.github.opendictate.OpenDictate
+    desktop: usr/share/applications/io.github.hkumarsaikia.OpenDictate.desktop
+    common-id: io.github.hkumarsaikia.OpenDictate
     extensions: [ gnome ]
     plugs:
       - audio-record
@@ -139,14 +139,14 @@ parts:
         cat $CRAFT_PART_INSTALL/etc/asound.conf >> $CRAFT_PART_INSTALL/usr/share/alsa/alsa.conf
       fi
       install -Dm644 LICENSE $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE
-      install -Dm644 data/io.github.opendictate.OpenDictate.desktop $CRAFT_PART_INSTALL/usr/share/applications/io.github.opendictate.OpenDictate.desktop
-      install -Dm644 data/io.github.opendictate.OpenDictate.metainfo.xml $CRAFT_PART_INSTALL/usr/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml
-      install -Dm644 src/ui/assets/brand/opendictate.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/io.github.opendictate.OpenDictate.svg
+      install -Dm644 data/io.github.hkumarsaikia.OpenDictate.desktop $CRAFT_PART_INSTALL/usr/share/applications/io.github.hkumarsaikia.OpenDictate.desktop
+      install -Dm644 data/io.github.hkumarsaikia.OpenDictate.metainfo.xml $CRAFT_PART_INSTALL/usr/share/metainfo/io.github.hkumarsaikia.OpenDictate.metainfo.xml
+      install -Dm644 src/ui/assets/brand/opendictate.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate.svg
       install -Dm644 src/ui/assets/brand/opendictate.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/opendictate.svg
       install -Dm644 src/ui/assets/brand/opendictate-dark.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/opendictate-dark.svg
       install -Dm644 src/ui/assets/brand/opendictate-light.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/opendictate-light.svg
       for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
-        install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/io.github.opendictate.OpenDictate.png
+        install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/io.github.hkumarsaikia.OpenDictate.png
         install -Dm644 src/ui/assets/brand/png/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-dark.png
         install -Dm644 src/ui/assets/brand/png-light/${size}.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}/apps/opendictate-light.png
       done

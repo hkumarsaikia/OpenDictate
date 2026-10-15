@@ -67,8 +67,8 @@ for variant in "${VARIANTS[@]}"; do
     listing=$(dpkg-deb -c "$deb_file")
 
     # Check 1: Assert canonical launcher is present
-    if echo "$listing" | grep -q "usr/share/applications/io.github.opendictate.OpenDictate.desktop"; then
-        echo "  [OK] Canonical launcher present: usr/share/applications/io.github.opendictate.OpenDictate.desktop"
+    if echo "$listing" | grep -q "usr/share/applications/io.github.hkumarsaikia.OpenDictate.desktop"; then
+        echo "  [OK] Canonical launcher present: usr/share/applications/io.github.hkumarsaikia.OpenDictate.desktop"
     else
         echo "  [FAIL] Missing canonical launcher in $(basename "$deb_file")!" >&2
         exit 1
@@ -99,8 +99,8 @@ for variant in "${VARIANTS[@]}"; do
         exit 1
     fi
 
-    if [ "${desktop_entries[0]}" != "/usr/share/applications/io.github.opendictate.OpenDictate.desktop" ]; then
-        echo "  [FAIL] Expected only '/usr/share/applications/io.github.opendictate.OpenDictate.desktop' in variant '$variant', found: '${desktop_entries[0]}'" >&2
+    if [ "${desktop_entries[0]}" != "/usr/share/applications/io.github.hkumarsaikia.OpenDictate.desktop" ]; then
+        echo "  [FAIL] Expected only '/usr/share/applications/io.github.hkumarsaikia.OpenDictate.desktop' in variant '$variant', found: '${desktop_entries[0]}'" >&2
         exit 1
     fi
 

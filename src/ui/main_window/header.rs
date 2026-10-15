@@ -134,7 +134,7 @@ impl HeaderBarWidgets {
     }
 }
 
-/// Ensures custom CSS rules for the Main Menu popover and Coffee dialog are loaded once.
+/// Ensures custom CSS rules for the Main Menu popover and Sponsor dialog are loaded once.
 pub fn ensure_main_menu_css() {
     use std::sync::atomic::{AtomicBool, Ordering};
     static LOADED: AtomicBool = AtomicBool::new(false);
@@ -154,12 +154,12 @@ pub fn ensure_main_menu_css() {
     .main-menu-popover .subpage-heading {
         font-size: 13px;
     }
-    .coffee-tier-btn {
+    .sponsor-tier-btn {
         padding: 10px 14px;
         border-radius: 10px;
     }
-    .coffee-badge-icon {
-        color: #e5a50a;
+    .sponsor-badge-icon {
+        color: #ea4aaa;
     }
     "#;
     provider.load_from_string(css);
@@ -1222,8 +1222,8 @@ pub fn build_about_dialog(config: &Config) -> libadwaita::AboutDialog {
     // 4. Inject full links for the 5 default downloadable Local AI models into the Details subpage (replacing the Website button)
     inject_details_model_links(&dialog);
 
-    // 5. Inject "Buy me a coffee" option below "Acknowledgements" on the About main page
-    inject_buy_me_a_coffee_row(&dialog);
+    // 5. Inject "Sponsor on GitHub" option below "Acknowledgements" on the About main page
+    inject_sponsor_row(&dialog);
 
     dialog
 }
@@ -1326,24 +1326,24 @@ fn find_boxed_list_boxes(root: &gtk4::Widget, out: &mut Vec<gtk4::ListBox>) {
     }
 }
 
-/// Injects the "Buy me a coffee" row directly below "Acknowledgements" on the About main page.
-fn inject_buy_me_a_coffee_row(dialog: &libadwaita::AboutDialog) {
+/// Injects the "Sponsor on GitHub" row directly below "Acknowledgements" on the About main page.
+fn inject_sponsor_row(dialog: &libadwaita::AboutDialog) {
     let root_widget = dialog
         .child()
         .unwrap_or_else(|| dialog.clone().upcast::<gtk4::Widget>());
 
-    let coffee_row = libadwaita::ActionRow::builder()
-        .title("Buy me a coffee")
+    let sponsor_row = libadwaita::ActionRow::builder()
+        .title("Sponsor on GitHub")
         .activatable(true)
         .build();
     let arrow = gtk4::Image::from_icon_name("go-next-symbolic");
-    coffee_row.add_suffix(&arrow);
+    sponsor_row.add_suffix(&arrow);
 
     let dialog_weak = dialog.downgrade();
-    coffee_row.connect_activated(move |_| {
+    sponsor_row.connect_activated(move |_| {
         if let Some(dlg) = dialog_weak.upgrade() {
-            let coffee_dlg = build_buy_me_a_coffee_dialog();
-            coffee_dlg.present(Some(&dlg));
+            let sponsor_dlg = build_sponsor_dialog();
+            sponsor_dlg.present(Some(&dlg));
         }
     });
 
@@ -1355,13 +1355,13 @@ fn inject_buy_me_a_coffee_row(dialog: &libadwaita::AboutDialog) {
         && let Some(parent) = ack_row.parent()
     {
         if let Some(list_box) = parent.downcast_ref::<gtk4::ListBox>() {
-            list_box.append(&coffee_row);
+            list_box.append(&sponsor_row);
             return;
         } else if let Some(group) = parent.downcast_ref::<libadwaita::PreferencesGroup>() {
-            group.add(&coffee_row);
+            group.add(&sponsor_row);
             return;
         } else if let Some(pbox) = parent.downcast_ref::<gtk4::Box>() {
-            pbox.append(&coffee_row);
+            pbox.append(&sponsor_row);
             return;
         }
     }
@@ -1369,23 +1369,60 @@ fn inject_buy_me_a_coffee_row(dialog: &libadwaita::AboutDialog) {
     let mut list_boxes = Vec::new();
     find_boxed_list_boxes(&root_widget, &mut list_boxes);
     if let Some(last_lb) = list_boxes.last() {
-        last_lb.append(&coffee_row);
+        last_lb.append(&sponsor_row);
     } else if let Some(child) = dialog.child()
         && let Some(pbox) = child.downcast_ref::<gtk4::Box>()
     {
-        pbox.append(&coffee_row);
+        pbox.append(&sponsor_row);
     }
 }
 
-/// Constructs and returns the aesthetic, modern "Buy Me a Coffee" dialog with
+/// Minimum whole-dollar sponsorship amount ($1) supported by the GitHub Sponsors GraphQL API.
+///
+/// Note: While the platform accepts amounts starting at $1, individual sponsor profiles
+/// may configure a higher minimum tier on GitHub.
+pub const MIN_SPONSOR_AMOUNT: u32 = 1;
+
+/// Maximum whole-dollar sponsorship amount ($12,000) supported by the GitHub Sponsors GraphQL API.
+pub const MAX_SPONSOR_AMOUNT: u32 = 12_000;
+
+/// Parses a custom sponsor amount string into a supported whole-dollar integer.
+/// Rejects empty strings, whitespace-only, zero, negative numbers, decimals,
+/// non-digit characters, overflows, and amounts outside the supported range ($1–$12,000).
+/// Does not silently strip invalid characters.
+pub fn parse_custom_sponsor_amount(raw: &str) -> Option<u32> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || !trimmed.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let val = trimmed.parse::<u32>().ok()?;
+    if (MIN_SPONSOR_AMOUNT..=MAX_SPONSOR_AMOUNT).contains(&val) {
+        Some(val)
+    } else {
+        None
+    }
+}
+
+/// Builds the canonical GitHub Sponsors URL for a given amount if within the supported range ($1–$12,000).
+/// Returns None if no amount is provided (None) or if the amount is outside the supported range.
+pub fn build_github_sponsors_url(amount: Option<u32>) -> Option<String> {
+    let amt = amount?;
+    if (MIN_SPONSOR_AMOUNT..=MAX_SPONSOR_AMOUNT).contains(&amt) {
+        Some(format!("https://github.com/sponsors/hkumarsaikia?amount={}", amt))
+    } else {
+        None
+    }
+}
+
+/// Constructs and returns the aesthetic, modern "Sponsor on GitHub" dialog with
 /// $2, $5, $10, $20 presets and a "$ Custom amount" entry.
-pub fn build_buy_me_a_coffee_dialog() -> libadwaita::Dialog {
+pub fn build_sponsor_dialog() -> libadwaita::Dialog {
     ensure_main_menu_css();
 
     let dialog = libadwaita::Dialog::builder()
-        .title("Buy Me a Coffee")
+        .title("Sponsor on GitHub")
         .content_width(420)
-        .content_height(410)
+        .content_height(380)
         .build();
 
     let toolbar_view = libadwaita::ToolbarView::new();
@@ -1408,11 +1445,14 @@ pub fn build_buy_me_a_coffee_dialog() -> libadwaita::Dialog {
         .halign(gtk4::Align::Center)
         .build();
 
-    let coffee_icon = gtk4::Label::builder()
-        .label("☕")
-        .css_classes(vec!["title-1".to_string(), "coffee-badge-icon".to_string()])
+    let sponsor_icon = gtk4::Label::builder()
+        .label("💖")
+        .css_classes(vec![
+            "title-1".to_string(),
+            "sponsor-badge-icon".to_string(),
+        ])
         .build();
-    hero_box.append(&coffee_icon);
+    hero_box.append(&sponsor_icon);
 
     let hero_title = gtk4::Label::builder()
         .label("Support OpenDictate")
@@ -1423,46 +1463,35 @@ pub fn build_buy_me_a_coffee_dialog() -> libadwaita::Dialog {
 
     main_box.append(&hero_box);
 
-    // Preset dollar tiers ($2, $5, $10, $20) in a 2x2 Grid
+    // Preset dollar amounts ($2, $5, $10, $20) in a 2x2 Grid
     let grid = gtk4::Grid::builder()
         .row_spacing(10)
         .column_spacing(10)
         .column_homogeneous(true)
         .build();
 
-    let tiers: [(u32, &str, &str); 4] = [
-        (2, "$2", "Espresso Shot"),
-        (5, "$5", "Classic Coffee"),
-        (10, "$10", "Double Latte"),
-        (20, "$20", "Bag of Beans"),
+    let tiers: [(u32, &str); 4] = [
+        (2, "$2"),
+        (5, "$5"),
+        (10, "$10"),
+        (20, "$20"),
     ];
 
-    let selected_amount = Rc::new(RefCell::new("5".to_string()));
+    let selected_amount: Rc<RefCell<Option<u32>>> = Rc::new(RefCell::new(Some(5)));
     let mut tier_buttons: Vec<(u32, gtk4::ToggleButton)> = Vec::with_capacity(4);
 
-    for (idx, (amt, price_str, desc_str)) in tiers.iter().enumerate() {
-        let btn_box = gtk4::Box::builder()
-            .orientation(gtk4::Orientation::Vertical)
-            .spacing(2)
-            .halign(gtk4::Align::Center)
-            .build();
-
+    for (idx, (amt, price_str)) in tiers.iter().enumerate() {
         let price_lbl = gtk4::Label::builder()
             .label(*price_str)
             .css_classes(vec!["title-3".to_string()])
+            .halign(gtk4::Align::Center)
+            .valign(gtk4::Align::Center)
             .build();
-        let desc_lbl = gtk4::Label::builder()
-            .label(*desc_str)
-            .css_classes(vec!["caption".to_string(), "dim-label".to_string()])
-            .build();
-
-        btn_box.append(&price_lbl);
-        btn_box.append(&desc_lbl);
 
         let toggle = gtk4::ToggleButton::builder()
-            .child(&btn_box)
+            .child(&price_lbl)
             .active(*amt == 5)
-            .css_classes(vec!["coffee-tier-btn".to_string()])
+            .css_classes(vec!["sponsor-tier-btn".to_string()])
             .build();
 
         if let Some((_, first_btn)) = tier_buttons.first() {
@@ -1493,69 +1522,111 @@ pub fn build_buy_me_a_coffee_dialog() -> libadwaita::Dialog {
 
     // Primary Support CTA button
     let support_btn = gtk4::Button::builder()
-        .label("Support with $5 ☕")
+        .label("Sponsor $5 on GitHub 💖")
         .css_classes(vec!["suggested-action".to_string(), "pill".to_string()])
         .halign(gtk4::Align::Fill)
         .margin_top(4)
+        .sensitive(true)
         .build();
     main_box.append(&support_btn);
 
     // Wire preset toggle buttons to update CTA label and clear custom entry
-    let is_updating_from_tier = Rc::new(RefCell::new(false));
+    let is_updating = Rc::new(RefCell::new(false));
+    let all_toggles: Rc<Vec<gtk4::ToggleButton>> = Rc::new(
+        tier_buttons.iter().map(|(_, b)| b.clone()).collect(),
+    );
+
     for (amt, toggle) in &tier_buttons {
         let amt_val = *amt;
         let sel_amt = selected_amount.clone();
         let cta_btn = support_btn.clone();
         let cust_entry = custom_entry.clone();
-        let guard = is_updating_from_tier.clone();
+        let guard = is_updating.clone();
+        let toggles_ref = all_toggles.clone();
+
         toggle.connect_toggled(move |btn| {
+            if *guard.borrow() {
+                return;
+            }
             if btn.is_active() {
                 *guard.borrow_mut() = true;
                 cust_entry.set_text("");
                 *guard.borrow_mut() = false;
-                *sel_amt.borrow_mut() = amt_val.to_string();
-                cta_btn.set_label(&format!("Support with ${} ☕", amt_val));
+
+                *sel_amt.borrow_mut() = Some(amt_val);
+                cta_btn.set_sensitive(true);
+                cta_btn.set_label(&format!("Sponsor ${} on GitHub 💖", amt_val));
+            } else {
+                let any_active = toggles_ref.iter().any(|b| b.is_active());
+                if !any_active && cust_entry.text().trim().is_empty() {
+                    *sel_amt.borrow_mut() = None;
+                    cta_btn.set_sensitive(false);
+                    cta_btn.set_label("Select an amount to sponsor");
+                }
             }
         });
     }
 
-    // Wire custom amount entry to update CTA label dynamically
+    // Wire custom amount entry to validate and update CTA label dynamically
     {
         let sel_amt = selected_amount.clone();
         let cta_btn = support_btn.clone();
-        let toggles: Vec<gtk4::ToggleButton> =
-            tier_buttons.iter().map(|(_, b)| b.clone()).collect();
-        let guard = is_updating_from_tier.clone();
+        let toggles_ref = all_toggles.clone();
+        let guard = is_updating.clone();
+
         custom_entry.connect_changed(move |entry| {
             if *guard.borrow() {
                 return;
             }
             let raw = entry.text();
-            let cleaned: String = raw
-                .chars()
-                .filter(|c| c.is_ascii_digit() || *c == '.')
-                .collect();
-            if !cleaned.is_empty() {
-                for t in &toggles {
+            let trimmed = raw.trim();
+
+            if trimmed.is_empty() {
+                *guard.borrow_mut() = true;
+                for t in toggles_ref.iter() {
                     t.set_active(false);
                 }
-                *sel_amt.borrow_mut() = cleaned.clone();
-                cta_btn.set_label(&format!("Support with ${} ☕", cleaned));
+                *guard.borrow_mut() = false;
+
+                *sel_amt.borrow_mut() = None;
+                cta_btn.set_sensitive(false);
+                cta_btn.set_label("Select an amount to sponsor");
+            } else if let Some(amt) = parse_custom_sponsor_amount(&raw) {
+                *guard.borrow_mut() = true;
+                for t in toggles_ref.iter() {
+                    t.set_active(false);
+                }
+                *guard.borrow_mut() = false;
+
+                *sel_amt.borrow_mut() = Some(amt);
+                cta_btn.set_sensitive(true);
+                cta_btn.set_label(&format!("Sponsor ${} on GitHub 💖", amt));
+            } else {
+                *guard.borrow_mut() = true;
+                for t in toggles_ref.iter() {
+                    t.set_active(false);
+                }
+                *guard.borrow_mut() = false;
+
+                *sel_amt.borrow_mut() = None;
+                cta_btn.set_sensitive(false);
+                cta_btn.set_label("Invalid amount");
             }
         });
     }
 
-    // Wire Support button click to open external sponsor/coffee URL
+    // Wire Support button click to open external GitHub Sponsors URL
     {
         let sel_amt = selected_amount.clone();
         let dlg_weak = dialog.downgrade();
         support_btn.connect_clicked(move |btn| {
-            let amt = sel_amt.borrow().clone();
-            let parent_win = btn.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
-            let url = format!("https://github.com/sponsors/hkumarsaikia?amount={}", amt);
-            open_external_url(&url, parent_win.as_ref());
-            if let Some(d) = dlg_weak.upgrade() {
-                d.close();
+            let maybe_amt = *sel_amt.borrow();
+            if let Some(url) = build_github_sponsors_url(maybe_amt) {
+                let parent_win = btn.root().and_then(|r| r.downcast::<gtk4::Window>().ok());
+                open_external_url(&url, parent_win.as_ref());
+                if let Some(d) = dlg_weak.upgrade() {
+                    d.close();
+                }
             }
         });
     }

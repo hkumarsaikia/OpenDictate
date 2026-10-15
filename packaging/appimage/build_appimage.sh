@@ -10,7 +10,7 @@ ARCH="$(uname -m)"
 VERSION="$(grep -m1 '^version = ' "$PROJECT_ROOT/Cargo.toml" | cut -d '"' -f2 2>/dev/null || echo "2.0.2")"
 [ -z "$VERSION" ] && VERSION="2.0.2"
 APP_NAME="OpenDictate"
-APP_ID="io.github.opendictate.OpenDictate"
+APP_ID="io.github.hkumarsaikia.OpenDictate"
 
 echo "=== Building OpenDictate AppImage ($VERSION-$ARCH) ==="
 

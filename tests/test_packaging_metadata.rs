@@ -55,10 +55,10 @@ fn extract_yaml_list_under_key(content: &str, key: &str) -> Vec<String> {
 #[test]
 fn test_flatpak_manifest_core_attributes() {
     let flatpak_path =
-        project_root().join("packaging/flatpak/io.github.opendictate.OpenDictate.yml");
+        project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml");
     assert!(
         flatpak_path.exists(),
-        "Flatpak manifest must exist at packaging/flatpak/io.github.opendictate.OpenDictate.yml"
+        "Flatpak manifest must exist at packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml"
     );
 
     let content = fs::read_to_string(&flatpak_path).expect("Failed to read Flatpak manifest");
@@ -66,8 +66,8 @@ fn test_flatpak_manifest_core_attributes() {
     let app_id = extract_top_level_yaml_value(&content, "app-id")
         .expect("Missing app-id in Flatpak manifest");
     assert_eq!(
-        app_id, "io.github.opendictate.OpenDictate",
-        "Flatpak app-id must be io.github.opendictate.OpenDictate"
+        app_id, "io.github.hkumarsaikia.OpenDictate",
+        "Flatpak app-id must be io.github.hkumarsaikia.OpenDictate"
     );
 
     let runtime = extract_top_level_yaml_value(&content, "runtime")
@@ -115,7 +115,7 @@ fn test_flatpak_manifest_core_attributes() {
 #[test]
 fn test_flatpak_manifest_finish_args() {
     let flatpak_path =
-        project_root().join("packaging/flatpak/io.github.opendictate.OpenDictate.yml");
+        project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml");
     let content = fs::read_to_string(&flatpak_path).expect("Failed to read Flatpak manifest");
 
     let finish_args = extract_yaml_list_under_key(&content, "finish-args");
@@ -133,8 +133,6 @@ fn test_flatpak_manifest_finish_args() {
         "--socket=pulseaudio",
         "--share=network",
         "--talk-name=org.kde.StatusNotifierWatcher",
-        "--filesystem=xdg-data/opendictate:create",
-        "--filesystem=xdg-config/opendictate:create",
     ];
 
     for &arg in &required_args {
@@ -150,6 +148,71 @@ fn test_flatpak_manifest_finish_args() {
     assert!(!finish_args.iter().any(|a| a == "--socket=x11"));
     assert!(!finish_args.iter().any(|a| a == "--device=all"));
     assert!(!finish_args.iter().any(|a| a == "--filesystem=home"));
+    assert!(
+        !finish_args.iter().any(|a| a.starts_with("--filesystem=xdg-")),
+        "Flatpak must not request host XDG directory access; Flatpak automatically provides private isolated XDG storage"
+    );
+}
+
+#[test]
+fn test_flatpak_offline_rust_build_and_sources() {
+    let flatpak_path =
+        project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml");
+    let content = fs::read_to_string(&flatpak_path).expect("Failed to read Flatpak manifest");
+
+    // Must not allow build-time network access
+    assert!(
+        !content.contains("build-args:\n        - --share=network"),
+        "Flatpak build must not use build-args --share=network; builds must be strictly offline"
+    );
+
+    // Must build with --offline flag
+    assert!(
+        content.contains("cargo build --offline"),
+        "Flatpak cargo build commands must include --offline"
+    );
+
+    // Must pin repository source
+    assert!(
+        content.contains("url: https://github.com/hkumarsaikia/OpenDictate.git"),
+        "Flatpak manifest must reference canonical repository URL"
+    );
+    assert!(
+        content.contains("tag: v2.0.2"),
+        "Flatpak manifest must pin release tag v2.0.2"
+    );
+    assert!(
+        content.contains("commit: c1c4005612b2aa378c4352593d42ab036819c035"),
+        "Flatpak manifest must pin commit c1c4005612b2aa378c4352593d42ab036819c035"
+    );
+
+    // Must include cargo-sources.json
+    assert!(
+        content.contains("- cargo-sources.json"),
+        "Flatpak manifest must include cargo-sources.json in sources"
+    );
+
+    // Verify cargo-sources.json exists and contains offline vendored sources
+    let cargo_sources_path = project_root().join("packaging/flatpak/cargo-sources.json");
+    assert!(
+        cargo_sources_path.exists(),
+        "packaging/flatpak/cargo-sources.json must exist"
+    );
+    let cargo_sources_content =
+        fs::read_to_string(&cargo_sources_path).expect("Failed to read cargo-sources.json");
+    assert!(
+        cargo_sources_content.contains("https://static.crates.io/crates/"),
+        "cargo-sources.json must contain crates.io archive sources"
+    );
+    assert!(
+        cargo_sources_content.contains(".cargo-checksum.json"),
+        "cargo-sources.json must contain crate checksum files"
+    );
+    assert!(
+        cargo_sources_content.contains("[source.crates-io]")
+            && cargo_sources_content.contains("replace-with = \\\"vendored-sources\\\""),
+        "cargo-sources.json must configure cargo source replacement for offline builds"
+    );
 }
 
 #[test]
@@ -217,17 +280,17 @@ fn test_snapcraft_manifest_plugs() {
 
 #[test]
 fn test_appstream_metainfo_metadata() {
-    let metainfo_path = project_root().join("data/io.github.opendictate.OpenDictate.metainfo.xml");
+    let metainfo_path = project_root().join("data/io.github.hkumarsaikia.OpenDictate.metainfo.xml");
     assert!(
         metainfo_path.exists(),
-        "AppStream metainfo must exist at data/io.github.opendictate.OpenDictate.metainfo.xml"
+        "AppStream metainfo must exist at data/io.github.hkumarsaikia.OpenDictate.metainfo.xml"
     );
 
     let content = fs::read_to_string(&metainfo_path).expect("Failed to read AppStream metainfo");
 
     assert!(
-        content.contains("<id>io.github.opendictate.OpenDictate</id>"),
-        "AppStream metadata must specify ID io.github.opendictate.OpenDictate"
+        content.contains("<id>io.github.hkumarsaikia.OpenDictate</id>"),
+        "AppStream metadata must specify ID io.github.hkumarsaikia.OpenDictate"
     );
     assert!(
         content.contains("<binary>opendictate</binary>"),
@@ -260,14 +323,24 @@ fn test_appstream_metainfo_metadata() {
             screenshot_file
         );
     }
+
+    // Verify donation URL is configured for GitHub Sponsors and contains no stale buymeacoffee links
+    assert!(
+        content.contains("<url type=\"donation\">https://github.com/sponsors/hkumarsaikia</url>"),
+        "AppStream metadata must specify donation URL https://github.com/sponsors/hkumarsaikia"
+    );
+    assert!(
+        !content.to_lowercase().contains("buymeacoffee"),
+        "AppStream metadata must not contain stale buymeacoffee reference"
+    );
 }
 
 #[test]
 fn test_cross_packaging_consistency() {
     let flatpak_path =
-        project_root().join("packaging/flatpak/io.github.opendictate.OpenDictate.yml");
+        project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml");
     let snap_path = project_root().join("snap/snapcraft.yaml");
-    let metainfo_path = project_root().join("data/io.github.opendictate.OpenDictate.metainfo.xml");
+    let metainfo_path = project_root().join("data/io.github.hkumarsaikia.OpenDictate.metainfo.xml");
     let cargo_path = project_root().join("Cargo.toml");
 
     let flatpak_content = fs::read_to_string(&flatpak_path).unwrap();
@@ -275,7 +348,7 @@ fn test_cross_packaging_consistency() {
     let metainfo_content = fs::read_to_string(&metainfo_path).unwrap();
     let cargo_content = fs::read_to_string(&cargo_path).unwrap();
 
-    let expected_app_id = "io.github.opendictate.OpenDictate";
+    let expected_app_id = "io.github.hkumarsaikia.OpenDictate";
     let expected_binary = "opendictate";
     let expected_version = "2.0.2";
 
@@ -300,7 +373,7 @@ fn test_cross_packaging_consistency() {
 #[test]
 fn test_legacy_tier_sandbox_rules() {
     let flatpak_path =
-        project_root().join("packaging/flatpak/io.github.opendictate.OpenDictate.yml");
+        project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml");
     let snap_path = project_root().join("snap/snapcraft.yaml");
 
     let flatpak_content = fs::read_to_string(&flatpak_path).unwrap();
@@ -322,10 +395,10 @@ fn test_legacy_tier_sandbox_rules() {
     assert!(snap_plugs.contains(&"x11".to_string()));
     assert!(snap_plugs.contains(&"desktop-legacy".to_string()));
 
-    // Persistent storage for offline models and history
-    assert!(flatpak_finish_args.contains(&"--filesystem=xdg-data/opendictate:create".to_string()));
+    // Persistent storage for offline models and history: Flatpak relies on sandbox-isolated private storage
     assert!(
-        flatpak_finish_args.contains(&"--filesystem=xdg-config/opendictate:create".to_string())
+        !flatpak_finish_args.iter().any(|a| a.starts_with("--filesystem=xdg-")),
+        "Flatpak manifest must not punch holes into host XDG directories (flatpak-builder-lint rule)"
     );
 }
 
@@ -357,7 +430,7 @@ fn test_dual_binary_packaging_and_amd64_platform_scope() {
     let snap_content =
         fs::read_to_string(project_root().join("snap/snapcraft.yaml")).expect("read snapcraft");
     let flatpak_content = fs::read_to_string(
-        project_root().join("packaging/flatpak/io.github.opendictate.OpenDictate.yml"),
+        project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml"),
     )
     .expect("read flatpak");
     let appimage_content =
@@ -487,13 +560,13 @@ fn test_debian_desktop_launcher_canonical_single_entry() {
 
     // 1. Verify canonical launcher installation path
     assert!(
-        deb_content.contains("usr/share/applications/io.github.opendictate.OpenDictate.desktop"),
-        "build_rust_deb.sh must install canonical io.github.opendictate.OpenDictate.desktop"
+        deb_content.contains("usr/share/applications/io.github.hkumarsaikia.OpenDictate.desktop"),
+        "build_rust_deb.sh must install canonical io.github.hkumarsaikia.OpenDictate.desktop"
     );
 
     // 2. Verify redundant opendictate.desktop symlink or fallback is completely removed
     assert!(
-        !deb_content.contains("ln -sf io.github.opendictate.OpenDictate.desktop \"$build_dir/usr/share/applications/opendictate.desktop\""),
+        !deb_content.contains("ln -sf io.github.hkumarsaikia.OpenDictate.desktop \"$build_dir/usr/share/applications/opendictate.desktop\""),
         "build_rust_deb.sh must not create a redundant opendictate.desktop symlink"
     );
     assert!(
@@ -502,11 +575,11 @@ fn test_debian_desktop_launcher_canonical_single_entry() {
     );
 
     // 3. Verify canonical desktop file contains valid desktop actions and identity
-    let desktop_content = fs::read_to_string(project_root().join("data/io.github.opendictate.OpenDictate.desktop"))
+    let desktop_content = fs::read_to_string(project_root().join("data/io.github.hkumarsaikia.OpenDictate.desktop"))
         .expect("read canonical desktop entry");
     assert!(desktop_content.contains("Type=Application"));
     assert!(desktop_content.contains("Name=OpenDictate"));
-    assert!(desktop_content.contains("Icon=io.github.opendictate.OpenDictate"));
+    assert!(desktop_content.contains("Icon=io.github.hkumarsaikia.OpenDictate"));
     assert!(desktop_content.contains("StartupWMClass=opendictate"));
     assert!(desktop_content.contains("Exec=opendictate %U"));
     assert!(desktop_content.contains("Actions=MiniBar;Toggle;"));
@@ -516,4 +589,108 @@ fn test_debian_desktop_launcher_canonical_single_entry() {
     assert!(desktop_content.contains("Exec=opendictate --toggle"));
 }
 
+#[test]
+fn test_flatpak_json_manifest_core_and_sandbox() {
+    let json_path =
+        project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.json");
+    assert!(
+        json_path.exists(),
+        "Flatpak JSON manifest must exist at packaging/flatpak/io.github.hkumarsaikia.OpenDictate.json"
+    );
 
+    let content = fs::read_to_string(&json_path).expect("Failed to read Flatpak JSON manifest");
+    let json: serde_json::Value =
+        serde_json::from_str(&content).expect("Flatpak JSON manifest must be valid JSON");
+
+    // Verify core identity
+    assert_eq!(
+        json["id"].as_str().unwrap_or_default(),
+        "io.github.hkumarsaikia.OpenDictate",
+        "Flatpak JSON id must be io.github.hkumarsaikia.OpenDictate"
+    );
+    assert_eq!(
+        json["runtime"].as_str().unwrap_or_default(),
+        "org.gnome.Platform",
+        "Flatpak JSON runtime must be org.gnome.Platform"
+    );
+    assert_eq!(
+        json["runtime-version"].as_str().unwrap_or_default(),
+        "51",
+        "Flatpak JSON runtime-version must be '51'"
+    );
+    assert_eq!(
+        json["sdk"].as_str().unwrap_or_default(),
+        "org.gnome.Sdk",
+        "Flatpak JSON sdk must be org.gnome.Sdk"
+    );
+    assert_eq!(
+        json["command"].as_str().unwrap_or_default(),
+        "opendictate",
+        "Flatpak JSON command must be opendictate"
+    );
+
+    // Verify finish-args permissions
+    let finish_args: Vec<String> = json["finish-args"]
+        .as_array()
+        .expect("finish-args must be an array")
+        .iter()
+        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+        .collect();
+
+    let required_args = [
+        "--share=ipc",
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--device=dri",
+        "--socket=pulseaudio",
+        "--share=network",
+        "--talk-name=org.kde.StatusNotifierWatcher",
+    ];
+
+    for &arg in &required_args {
+        assert!(
+            finish_args.contains(&arg.to_string()),
+            "Flatpak JSON finish-args must contain '{}'",
+            arg
+        );
+    }
+
+    assert!(!finish_args.contains(&"--socket=x11".to_string()));
+    assert!(!finish_args.contains(&"--device=all".to_string()));
+    assert!(!finish_args.contains(&"--filesystem=home".to_string()));
+    assert!(!finish_args.iter().any(|a| a.starts_with("--filesystem=xdg-")));
+
+    // Verify offline cargo sources and git pinning
+    let modules = json["modules"].as_array().expect("modules must be an array");
+    let opendictate_mod = modules
+        .iter()
+        .find(|m| m["name"].as_str() == Some("opendictate"))
+        .expect("opendictate module must exist");
+
+    let sources = opendictate_mod["sources"]
+        .as_array()
+        .expect("sources must be an array");
+
+    let git_source = sources
+        .iter()
+        .find(|s| s.is_object() && s["type"].as_str() == Some("git"))
+        .expect("Git source must exist");
+
+    assert_eq!(
+        git_source["url"].as_str().unwrap_or_default(),
+        "https://github.com/hkumarsaikia/OpenDictate.git"
+    );
+    assert_eq!(
+        git_source["tag"].as_str().unwrap_or_default(),
+        "v2.0.2"
+    );
+    assert_eq!(
+        git_source["commit"].as_str().unwrap_or_default(),
+        "c1c4005612b2aa378c4352593d42ab036819c035"
+    );
+
+    assert!(
+        sources.iter().any(|s| s.as_str() == Some("cargo-sources.json")),
+        "cargo-sources.json must be referenced in opendictate sources"
+    );
+}

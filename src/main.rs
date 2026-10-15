@@ -194,7 +194,7 @@ fn main() {
         show_dashboard
     );
 
-    let app = relm4::RelmApp::new("io.github.opendictate.OpenDictate")
+    let app = relm4::RelmApp::new("io.github.hkumarsaikia.OpenDictate")
         .with_args(vec![exec_name])
         .with_broker(&MAIN_BROKER)
         .visible_on_activate(show_dashboard);

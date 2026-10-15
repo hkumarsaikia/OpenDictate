@@ -185,32 +185,32 @@ build_variant() {
 
 
     # Install FreeDesktop desktop entry (canonical reverse-DNS identifier)
-    if [ -f "$PROJECT_ROOT/data/io.github.opendictate.OpenDictate.desktop" ]; then
-        install -m 644 "$PROJECT_ROOT/data/io.github.opendictate.OpenDictate.desktop" "$build_dir/usr/share/applications/io.github.opendictate.OpenDictate.desktop"
+    if [ -f "$PROJECT_ROOT/data/io.github.hkumarsaikia.OpenDictate.desktop" ]; then
+        install -m 644 "$PROJECT_ROOT/data/io.github.hkumarsaikia.OpenDictate.desktop" "$build_dir/usr/share/applications/io.github.hkumarsaikia.OpenDictate.desktop"
     else
-        echo "Error: Canonical desktop file not found at $PROJECT_ROOT/data/io.github.opendictate.OpenDictate.desktop" >&2
+        echo "Error: Canonical desktop file not found at $PROJECT_ROOT/data/io.github.hkumarsaikia.OpenDictate.desktop" >&2
         exit 1
     fi
 
     # Install AppStream metainfo
-    if [ -f "$PROJECT_ROOT/data/io.github.opendictate.OpenDictate.metainfo.xml" ]; then
+    if [ -f "$PROJECT_ROOT/data/io.github.hkumarsaikia.OpenDictate.metainfo.xml" ]; then
         echo "Installing AppStream metainfo..."
-        install -m 644 "$PROJECT_ROOT/data/io.github.opendictate.OpenDictate.metainfo.xml" "$build_dir/usr/share/metainfo/io.github.opendictate.OpenDictate.metainfo.xml"
+        install -m 644 "$PROJECT_ROOT/data/io.github.hkumarsaikia.OpenDictate.metainfo.xml" "$build_dir/usr/share/metainfo/io.github.hkumarsaikia.OpenDictate.metainfo.xml"
     else
-        echo "Warning: AppStream metainfo not found at $PROJECT_ROOT/data/io.github.opendictate.OpenDictate.metainfo.xml" >&2
+        echo "Warning: AppStream metainfo not found at $PROJECT_ROOT/data/io.github.hkumarsaikia.OpenDictate.metainfo.xml" >&2
     fi
 
     # Install brand icons (SVG + multi-res PNG suite)
     echo "Installing application icons..."
     install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$build_dir/usr/share/icons/hicolor/scalable/apps/opendictate.svg"
-    install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$build_dir/usr/share/icons/hicolor/scalable/apps/io.github.opendictate.OpenDictate.svg"
+    install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$build_dir/usr/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate.svg"
 
     for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512; do
         local png_file="$PROJECT_ROOT/src/ui/assets/brand/png/${size}.png"
         if [ -f "$png_file" ]; then
             mkdir -p "$build_dir/usr/share/icons/hicolor/${size}/apps"
             install -m 644 "$png_file" "$build_dir/usr/share/icons/hicolor/${size}/apps/opendictate.png"
-            install -m 644 "$png_file" "$build_dir/usr/share/icons/hicolor/${size}/apps/io.github.opendictate.OpenDictate.png"
+            install -m 644 "$png_file" "$build_dir/usr/share/icons/hicolor/${size}/apps/io.github.hkumarsaikia.OpenDictate.png"
         else
             echo "Error: Missing brand PNG icon for $size: $png_file" >&2
             exit 1

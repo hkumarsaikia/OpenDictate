@@ -258,7 +258,7 @@ pub fn ensure_app_icons_registered() {
             let _ = std::fs::write(apps_dir.join("opendictate-dark.svg"), SVG_ICON_DARK);
             let _ = std::fs::write(apps_dir.join("opendictate-light.svg"), SVG_ICON_LIGHT);
             let _ = std::fs::write(
-                apps_dir.join("io.github.opendictate.OpenDictate.svg"),
+                apps_dir.join("io.github.hkumarsaikia.OpenDictate.svg"),
                 SVG_ICON_DARK,
             );
             for &(filename, content) in SYMBOLIC_ICONS {

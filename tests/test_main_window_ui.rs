@@ -1297,7 +1297,7 @@ fn test_dual_theme_svg_icons_and_window_icon_names() {
     let dark_svg = manifest_dir.join("src/ui/assets/brand/opendictate-dark.svg");
     let light_svg = manifest_dir.join("src/ui/assets/brand/opendictate-light.svg");
     let base_svg = manifest_dir.join("src/ui/assets/brand/opendictate.svg");
-    let appid_svg = manifest_dir.join("src/ui/assets/brand/io.github.opendictate.OpenDictate.svg");
+    let appid_svg = manifest_dir.join("src/ui/assets/brand/io.github.hkumarsaikia.OpenDictate.svg");
 
     for path in [&dark_svg, &light_svg, &base_svg, &appid_svg] {
         assert!(

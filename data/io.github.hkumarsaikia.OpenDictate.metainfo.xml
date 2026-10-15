@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.opendictate.OpenDictate</id>
+  <id>io.github.hkumarsaikia.OpenDictate</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>OpenDictate</name>
@@ -23,11 +23,11 @@
       <li>Floating MiniBar overlay for hands-free dictation across active windows</li>
       <li>Persistent local dictation history with quick clipboard copy and deletion</li>
       <li>Interface localization across 28 languages with adaptive dark and light themes</li>
-      <li>Desktop text insertion, system tray indicator, and global keyboard shortcuts</li>
+      <li>Automatic copying of transcribed text to the system clipboard, system tray indicator, and global keyboard shortcuts</li>
     </ul>
   </description>
 
-  <launchable type="desktop-id">io.github.opendictate.OpenDictate.desktop</launchable>
+  <launchable type="desktop-id">io.github.hkumarsaikia.OpenDictate.desktop</launchable>
 
   <branding>
     <color type="primary" scheme_preference="light">#c8dcf4</color>
@@ -36,19 +36,19 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/screenshots/main-window-settings.png</image>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.2/docs/screenshots/main-window-settings.png</image>
       <caption>Main settings window with Cloud AI and offline Whisper configuration</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/screenshots/header-menu-popover.png</image>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.2/docs/screenshots/header-menu-popover.png</image>
       <caption>Header menu with 28-language localization and dictation history</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/screenshots/floating-minibar.png</image>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.2/docs/screenshots/floating-minibar.png</image>
       <caption>Floating MiniBar overlay with live acoustic waveform and transcript drawer</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/main/docs/screenshots/main-window-light.png</image>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.2/docs/screenshots/main-window-light.png</image>
       <caption>Adaptive light theme with offline Whisper speech model management</caption>
     </screenshot>
   </screenshots>
@@ -61,7 +61,7 @@
   <url type="homepage">https://github.com/hkumarsaikia/OpenDictate</url>
   <url type="bugtracker">https://github.com/hkumarsaikia/OpenDictate/issues</url>
   <url type="vcs-browser">https://github.com/hkumarsaikia/OpenDictate</url>
-  <url type="donation">https://buymeacoffee.com/hksaikia</url>
+  <url type="donation">https://github.com/sponsors/hkumarsaikia</url>
 
   <provides>
     <binary>opendictate</binary>
@@ -98,7 +98,7 @@
         </ul>
       </description>
     </release>
-    <release version="2.0.0" date="2026-10-02">
+    <release version="2.0.0" date="2026-10-07">
       <description>
         <p>Major release featuring offline Whisper GGML speech recognition, multi-provider Cloud AI transcription, 28-language localization, and persistent dictation history.</p>
         <ul>

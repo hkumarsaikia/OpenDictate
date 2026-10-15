@@ -60,7 +60,7 @@ Linux distributions feature varying library release cycles and long-term support
 - **Backward Compatibility Mechanism:**
   - **Runtime Encapsulation:** Older distribution repositories only ship GTK 3 (3.22/3.24) or early GTK 4.6, lacking Libadwaita. The Flatpak GNOME 51 runtime bundles GTK 4.18+, Libadwaita 1.7+, and glibc 2.40+ inside an isolated sandbox, allowing systems as old as Ubuntu 18.04 (Linux kernel ≥ 4.15) to run OpenDictate out of the box without altering host system libraries.
   - **Snap Core24 Base:** The Snap package is constructed upon Canonical's Ubuntu 24.04 LTS (`core24`) foundation with GNOME extension plugins, enabling clean compatibility across all system configurations equipped with `snapd`.
-  - **Permission Portals:** Display connectivity is provided through Wayland and X11 fallback sockets (`--socket=wayland`, `--socket=fallback-x11`); microphone recording is routed through PulseAudio/PipeWire interfaces (`--socket=pulseaudio`, `--device=dri`, `plugs: [audio-record, audio-playback]`); and application data persistence (offline Whisper models and the SQLite history database `history.db`) is maintained via dedicated XDG data roots (`--filesystem=xdg-data/opendictate:create`, `--filesystem=xdg-config/opendictate:create`).
+  - **Permission Portals:** Display connectivity is provided through Wayland and X11 fallback sockets (`--socket=wayland`, `--socket=fallback-x11`); microphone recording is routed through PulseAudio/PipeWire interfaces (`--socket=pulseaudio`, `--device=dri`, `plugs: [audio-record, audio-playback]`); and application data persistence (offline Whisper models and the SQLite history database `history.db`) is automatically isolated in private sandbox XDG directories (Flatpak) and standard XDG paths (Snap).
 
 ---
 
@@ -151,7 +151,7 @@ lscpu | grep -i Flags | grep -E 'avx2'
 
 ### 4.1 Flatpak Packaging (Flathub Standard)
 
-The Flatpak manifest is defined at `packaging/flatpak/io.github.opendictate.OpenDictate.yml`.
+The Flatpak manifest is defined at `packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml`.
 
 #### Prerequisites
 Install `flatpak` and `flatpak-builder`:
@@ -181,19 +181,19 @@ flatpak install -y flathub \
 #### Building & Installing Locally
 ```bash
 # Build and install for current user
-flatpak-builder --user --install --force-clean build-flatpak packaging/flatpak/io.github.opendictate.OpenDictate.yml
+flatpak-builder --user --install --force-clean build-flatpak packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml
 
 # Launch OpenDictate Flatpak
-flatpak run io.github.opendictate.OpenDictate
+flatpak run io.github.hkumarsaikia.OpenDictate
 ```
 
 #### Creating a Distributable `.flatpak` Bundle
 ```bash
 # Export to a local OSTree repository
-flatpak-builder --repo=repo --force-clean build-flatpak packaging/flatpak/io.github.opendictate.OpenDictate.yml
+flatpak-builder --repo=repo --force-clean build-flatpak packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml
 
 # Create single-file bundle
-flatpak build-bundle repo opendictate.flatpak io.github.opendictate.OpenDictate
+flatpak build-bundle repo opendictate.flatpak io.github.hkumarsaikia.OpenDictate
 ```
 
 ---
@@ -449,7 +449,7 @@ Container logs are stored in `build_reports/<distro>.log`.
 Flatpak isolates audio access through the PulseAudio socket. If no microphone devices appear in OpenDictate's Audio Settings:
 1. Ensure the audio socket permission is granted:
    ```bash
-   flatpak override --user --socket=pulseaudio io.github.opendictate.OpenDictate
+   flatpak override --user --socket=pulseaudio io.github.hkumarsaikia.OpenDictate
    ```
 2. Check your PipeWire / PulseAudio recording source:
    ```bash

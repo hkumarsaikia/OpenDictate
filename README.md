@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![i18n: 28 Languages](https://img.shields.io/badge/i18n-28%20Languages-blue.svg)](docs/PACKAGING.md#7-internationalization-i18n--localized-desktops)
 [![Release](https://img.shields.io/badge/release-v2.0.2-success.svg)](https://github.com/hkumarsaikia/OpenDictate/releases/tag/v2.0.2)
+[![Sponsor](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa.svg)](https://github.com/sponsors/hkumarsaikia)
 
 **OpenDictate** is a native Linux voice dictation and AI speech-to-text application built in 100% pure Rust with GTK 4.12+, Libadwaita 1.5+, and Relm4. It combines private on-device Whisper transcription with multi-provider Cloud AI models to turn spoken voice into clean, polished text across Wayland and X11 desktops.
 
@@ -48,7 +49,7 @@ sudo apt install ./opendictate_2.0.2_universal_amd64.deb
 ```bash
 # Flatpak bundle
 flatpak install --user opendictate_2.0.2_amd64.flatpak
-flatpak run io.github.opendictate.OpenDictate
+flatpak run io.github.hkumarsaikia.OpenDictate
 
 # Snap package
 sudo snap install --dangerous opendictate_2.0.2_amd64.snap
