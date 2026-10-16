@@ -137,8 +137,12 @@ parts:
       EOF
       if [ -f $CRAFT_PART_INSTALL/usr/share/alsa/alsa.conf ]; then
         cat $CRAFT_PART_INSTALL/etc/asound.conf >> $CRAFT_PART_INSTALL/usr/share/alsa/alsa.conf
-      fi
       install -Dm644 LICENSE $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE
+      install -Dm644 licenses/THIRD_PARTY_LICENSES.md $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/THIRD_PARTY_LICENSES.md
+      install -Dm644 licenses/LICENSE-MPL-2.0.txt $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE-MPL-2.0.txt
+      install -Dm644 licenses/LICENSE-LGPL-2.1.txt $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE-LGPL-2.1.txt
+      install -Dm644 licenses/LICENSE-Apache-2.0.txt $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE-Apache-2.0.txt
+      install -Dm644 licenses/LICENSE-MIT.txt $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE-MIT.txt
       install -Dm644 data/io.github.hkumarsaikia.OpenDictate.desktop $CRAFT_PART_INSTALL/usr/share/applications/io.github.hkumarsaikia.OpenDictate.desktop
       install -Dm644 data/io.github.hkumarsaikia.OpenDictate.metainfo.xml $CRAFT_PART_INSTALL/usr/share/metainfo/io.github.hkumarsaikia.OpenDictate.metainfo.xml
       install -Dm644 src/ui/assets/brand/opendictate.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/io.github.hkumarsaikia.OpenDictate.svg

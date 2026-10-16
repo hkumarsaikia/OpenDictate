@@ -105,6 +105,14 @@ for variant in "${VARIANTS[@]}"; do
     fi
 
     echo "  [OK] Exactly 1 desktop launcher verified in usr/share/applications/: ${desktop_entries[0]}"
+
+    # Check 4: Assert copyright and third-party licenses are present
+    if echo "$listing" | grep -q "usr/share/doc/opendictate/copyright" && echo "$listing" | grep -q "usr/share/doc/opendictate/THIRD_PARTY_LICENSES.md"; then
+        echo "  [OK] License and THIRD_PARTY_LICENSES.md present in usr/share/doc/opendictate/"
+    else
+        echo "  [FAIL] Missing license or THIRD_PARTY_LICENSES.md in $(basename "$deb_file")!" >&2
+        exit 1
+    fi
 done
 
 echo ""

@@ -695,3 +695,89 @@ fn test_flatpak_json_manifest_core_and_sandbox() {
         "cargo-sources.json must be referenced in opendictate sources"
     );
 }
+
+#[test]
+fn test_third_party_license_collection_integrity() {
+    let licenses_dir = project_root().join("licenses");
+    assert!(licenses_dir.exists(), "licenses/ directory must exist in repository root");
+
+    let required_files = [
+        "THIRD_PARTY_LICENSES.md",
+        "LICENSE-OpenDictate.txt",
+        "LICENSE-MPL-2.0.txt",
+        "LICENSE-LGPL-2.1.txt",
+        "LICENSE-Apache-2.0.txt",
+        "LICENSE-MIT.txt",
+    ];
+
+    for file in &required_files {
+        let p = licenses_dir.join(file);
+        assert!(p.exists(), "Required license file missing: licenses/{}", file);
+        let sz = fs::metadata(&p).expect("read metadata").len();
+        assert!(sz > 0, "License file licenses/{} must not be empty", file);
+    }
+
+    let md_content = fs::read_to_string(licenses_dir.join("THIRD_PARTY_LICENSES.md"))
+        .expect("read THIRD_PARTY_LICENSES.md");
+
+    // Verify critical legal disclosures
+    assert!(md_content.contains("option-ext"), "Must document option-ext");
+    assert!(md_content.contains("MPL-2.0"), "Must document MPL-2.0");
+    assert!(md_content.contains("r-efi"), "Must document r-efi");
+    assert!(md_content.contains("alsa-lib"), "Must document alsa-lib");
+    assert!(md_content.contains("LGPL-2.1"), "Must document LGPL-2.1");
+    assert!(md_content.contains("whisper.cpp"), "Must document whisper.cpp");
+    assert!(md_content.contains("OpenAI"), "Must document OpenAI Whisper weights");
+}
+
+#[test]
+fn test_manifests_install_third_party_licenses() {
+    // 1. Flatpak YAML manifest
+    let flatpak_yaml = fs::read_to_string(project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml"))
+        .expect("read Flatpak YAML");
+    assert!(
+        flatpak_yaml.contains("licenses/THIRD_PARTY_LICENSES.md /app/share/licenses/io.github.hkumarsaikia.OpenDictate/THIRD_PARTY_LICENSES.md"),
+        "Flatpak YAML must install THIRD_PARTY_LICENSES.md"
+    );
+    assert!(
+        flatpak_yaml.contains("licenses/LICENSE-MPL-2.0.txt /app/share/licenses/io.github.hkumarsaikia.OpenDictate/LICENSE-MPL-2.0.txt"),
+        "Flatpak YAML must install LICENSE-MPL-2.0.txt"
+    );
+
+    // 2. Flatpak JSON manifest
+    let flatpak_json = fs::read_to_string(project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.json"))
+        .expect("read Flatpak JSON");
+    assert!(
+        flatpak_json.contains("licenses/THIRD_PARTY_LICENSES.md /app/share/licenses/io.github.hkumarsaikia.OpenDictate/THIRD_PARTY_LICENSES.md"),
+        "Flatpak JSON must install THIRD_PARTY_LICENSES.md"
+    );
+
+    // 3. Snapcraft manifest
+    let snapcraft_yaml = fs::read_to_string(project_root().join("snap/snapcraft.yaml"))
+        .expect("read snapcraft.yaml");
+    assert!(
+        snapcraft_yaml.contains("licenses/THIRD_PARTY_LICENSES.md $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/THIRD_PARTY_LICENSES.md"),
+        "Snapcraft YAML must install THIRD_PARTY_LICENSES.md"
+    );
+    assert!(
+        snapcraft_yaml.contains("licenses/LICENSE-MPL-2.0.txt $CRAFT_PART_INSTALL/usr/share/licenses/opendictate/LICENSE-MPL-2.0.txt"),
+        "Snapcraft YAML must install LICENSE-MPL-2.0.txt"
+    );
+
+    // 4. AppImage build script
+    let appimage_sh = fs::read_to_string(project_root().join("packaging/appimage/build_appimage.sh"))
+        .expect("read build_appimage.sh");
+    assert!(
+        appimage_sh.contains("THIRD_PARTY_LICENSES.md"),
+        "AppImage build script must install THIRD_PARTY_LICENSES.md"
+    );
+
+    // 5. DEB build script
+    let deb_sh = fs::read_to_string(project_root().join("build_rust_deb.sh"))
+        .expect("read build_rust_deb.sh");
+    assert!(
+        deb_sh.contains("THIRD_PARTY_LICENSES.md"),
+        "Debian build script must install THIRD_PARTY_LICENSES.md"
+    );
+}
+

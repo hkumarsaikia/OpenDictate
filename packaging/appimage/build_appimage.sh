@@ -125,6 +125,15 @@ ln -sf "$APP_ID.desktop" "$APP_DIR/opendictate.desktop"
 
 install -m 644 "$PROJECT_ROOT/data/$APP_ID.metainfo.xml" "$APP_DIR/usr/share/metainfo/$APP_ID.metainfo.xml"
 
+# Install application and third-party licenses
+mkdir -p "$APP_DIR/usr/share/licenses/opendictate" "$APP_DIR/usr/share/doc/opendictate"
+install -m 644 "$PROJECT_ROOT/LICENSE" "$APP_DIR/usr/share/licenses/opendictate/LICENSE"
+install -m 644 "$PROJECT_ROOT/LICENSE" "$APP_DIR/usr/share/doc/opendictate/copyright"
+if [ -d "$PROJECT_ROOT/licenses" ]; then
+    cp -f "$PROJECT_ROOT/licenses/"* "$APP_DIR/usr/share/licenses/opendictate/" 2>/dev/null || true
+    install -m 644 "$PROJECT_ROOT/licenses/THIRD_PARTY_LICENSES.md" "$APP_DIR/usr/share/doc/opendictate/THIRD_PARTY_LICENSES.md"
+fi
+
 # 5. Install brand icon suite
 echo "Installing application icons..."
 install -m 644 "$PROJECT_ROOT/src/ui/assets/brand/opendictate.svg" "$APP_DIR/usr/share/icons/hicolor/scalable/apps/$APP_ID.svg"

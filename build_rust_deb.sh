@@ -228,6 +228,15 @@ build_variant() {
         fi
     done
 
+    # Install documentation and licenses
+    mkdir -p "$build_dir/usr/share/doc/opendictate" "$build_dir/usr/share/licenses/opendictate"
+    install -m 644 "$PROJECT_ROOT/LICENSE" "$build_dir/usr/share/doc/opendictate/copyright"
+    install -m 644 "$PROJECT_ROOT/LICENSE" "$build_dir/usr/share/licenses/opendictate/LICENSE"
+    if [ -d "$PROJECT_ROOT/licenses" ]; then
+        cp -f "$PROJECT_ROOT/licenses/"* "$build_dir/usr/share/licenses/opendictate/" 2>/dev/null || true
+        install -m 644 "$PROJECT_ROOT/licenses/THIRD_PARTY_LICENSES.md" "$build_dir/usr/share/doc/opendictate/THIRD_PARTY_LICENSES.md"
+    fi
+
     # 4. Create DEBIAN/control
     cat << EOF > "$build_dir/DEBIAN/control"
 Package: opendictate
