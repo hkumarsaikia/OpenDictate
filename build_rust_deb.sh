@@ -146,7 +146,12 @@ build_variant() {
             ;;
     esac
 
-    local package_name="opendictate_${VERSION}_${variant}_${ARCH}"
+    local package_name
+    if [ "$variant" = "universal" ]; then
+        package_name="opendictate_${VERSION}_${ARCH}"
+    else
+        package_name="opendictate_${VERSION}_${variant}_${ARCH}"
+    fi
     local deb_file="$DIST_DIR/${package_name}.deb"
     local build_dir="$PROJECT_ROOT/build/deb_${variant}"
 
@@ -237,6 +242,55 @@ build_variant() {
         install -m 644 "$PROJECT_ROOT/licenses/THIRD_PARTY_LICENSES.md" "$build_dir/usr/share/doc/opendictate/THIRD_PARTY_LICENSES.md"
     fi
 
+    # Install Debian changelog (native package expects changelog.gz)
+    cat << EOF | gzip -9 -n > "$build_dir/usr/share/doc/opendictate/changelog.gz"
+opendictate (${VERSION}) stable; urgency=medium
+
+  * Release OpenDictate v${VERSION}.
+  * Dual-binary universal SIMD launcher and high-performance Whisper.
+
+ -- H. K. Saikia <hkumarsaikia@users.noreply.github.com>  Sun, 18 Oct 2026 23:59:00 +0000
+EOF
+
+    # Install manual pages
+    mkdir -p "$build_dir/usr/share/man/man1"
+    cat << 'EOF' | gzip -9 -n > "$build_dir/usr/share/man/man1/opendictate.1.gz"
+.TH OPENDICTATE 1 "October 2026" "opendictate 2.0.3" "User Commands"
+.SH NAME
+opendictate \- Voice dictation and AI speech-to-text application for Linux
+.SH SYNOPSIS
+.B opendictate
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+OpenDictate is a native Linux voice dictation and AI speech-to-text desktop application built with Rust, GTK4, and Libadwaita.
+.SH OPTIONS
+.TP
+\fB\-\-version\fR
+Print version information.
+.TP
+\fB\-\-help\fR
+Show command-line options.
+.SH AUTHOR
+H. K. Saikia <hkumarsaikia@users.noreply.github.com>
+EOF
+
+    cat << 'EOF' | gzip -9 -n > "$build_dir/usr/share/man/man1/opendictate-avx2.1.gz"
+.TH OPENDICTATE-AVX2 1 "October 2026" "opendictate 2.0.3" "User Commands"
+.SH NAME
+opendictate-avx2 \- AVX2-accelerated binary for OpenDictate
+.SH SYNOPSIS
+.B opendictate-avx2
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+Optimized AVX2+FMA vector acceleration sibling binary for OpenDictate.
+.SH OPTIONS
+.TP
+\fB\-\-version\fR
+Print version information.
+.SH AUTHOR
+H. K. Saikia <hkumarsaikia@users.noreply.github.com>
+EOF
+
     # 4. Create DEBIAN/control
     cat << EOF > "$build_dir/DEBIAN/control"
 Package: opendictate
@@ -244,19 +298,20 @@ Version: ${VERSION}
 Section: utils
 Priority: optional
 Architecture: ${ARCH}
-Maintainer: H. K. Saikia <https://github.com/hkumarsaikia/OpenDictate>
-Depends: libgtk-4-1, libadwaita-1-0, libasound2t64 | libasound2, wireplumber | pulseaudio-utils
+Maintainer: H. K. Saikia <hkumarsaikia@users.noreply.github.com>
+Depends: libc6 (>= 2.38), libgtk-4-1, libadwaita-1-0, libasound2t64 | libasound2, wireplumber | pulseaudio-utils
 Description: Voice dictation and AI speech-to-text application for Linux
  OpenDictate is a native Linux voice dictation and AI speech-to-text
  desktop application built with Rust, GTK4, and Libadwaita. It combines
  private offline Whisper transcription with multi-provider Cloud AI models
  to turn spoken voice into clean, polished text.
- Hardware variant: ${variant} (${variant_desc}).
+ .
+ Hardware variant: ${variant}.
 EOF
 
     # 5. Create DEBIAN/postinst
     cat << 'EOF' > "$build_dir/DEBIAN/postinst"
-#!/usr/bin/env bash
+#!/bin/sh
 set -e
 
 if command -v update-desktop-database >/dev/null 2>&1; then
@@ -273,7 +328,7 @@ EOF
 
     # 6. Create DEBIAN/postrm
     cat << 'EOF' > "$build_dir/DEBIAN/postrm"
-#!/usr/bin/env bash
+#!/bin/sh
 set -e
 
 if command -v update-desktop-database >/dev/null 2>&1; then
@@ -288,19 +343,17 @@ exit 0
 EOF
     chmod 755 "$build_dir/DEBIAN/postrm"
 
+    # Normalize file and directory permissions according to Debian policy
+    find "$build_dir" -type d -exec chmod 755 {} +
+    find "$build_dir" -type f -exec chmod 644 {} +
+    chmod 755 "$build_dir/usr/bin/"* "$build_dir/DEBIAN/postinst" "$build_dir/DEBIAN/postrm"
+
     # 7. Build Debian Package
     echo "Packaging into $deb_file..."
     dpkg-deb --build --root-owner-group "$build_dir" "$deb_file"
 
     # Clean temporary build directory
     rm -rf "$build_dir"
-
-    # 8. Manage backwards-compatible symlink for universal variant
-    if [ "$variant" = "universal" ]; then
-        local symlink_file="$DIST_DIR/opendictate_${VERSION}_${ARCH}.deb"
-        echo "Creating backwards-compatible symlink: $symlink_file -> $package_name.deb"
-        (cd "$DIST_DIR" && ln -sf "$package_name.deb" "opendictate_${VERSION}_${ARCH}.deb")
-    fi
 
     echo "=== Build Complete for $variant! ==="
     echo "Package generated at: $deb_file"
