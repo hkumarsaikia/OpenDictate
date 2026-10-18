@@ -691,9 +691,12 @@ fn test_resampling_fidelity_across_hardware_sample_rates() {
 fn test_reproducible_whisper_latency_and_silence_benchmark() {
     let candidate_paths = [
         resolve_model_path("tiny.en", None),
-        std::path::PathBuf::from(
-            "/home/hksaikia/snap/opendictate/x6/.local/share/opendictate/models/ggml-tiny.en.bin",
-        ),
+        std::env::var("HOME")
+            .map(|h| {
+                std::path::PathBuf::from(h)
+                    .join("snap/opendictate/current/.local/share/opendictate/models/ggml-tiny.en.bin")
+            })
+            .unwrap_or_default(),
         resolve_model_path("tiny", None),
     ];
     let Some(model_path) = candidate_paths
