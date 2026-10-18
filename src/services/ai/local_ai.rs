@@ -260,7 +260,11 @@ pub async fn download_local_model(
     let part_path = dir.join(format!("{}.part", info.filename));
 
     let client = reqwest::Client::builder()
-        .user_agent(concat!("OpenDictate/", env!("CARGO_PKG_VERSION"), " (Linux; x86_64)"))
+        .user_agent(concat!(
+            "OpenDictate/",
+            env!("CARGO_PKG_VERSION"),
+            " (Linux; x86_64)"
+        ))
         .build()
         .unwrap_or_default();
 
@@ -624,7 +628,11 @@ pub fn should_dispatch_to_avx2_binary(
     disable_dispatch: bool,
     candidate_exists_and_executable: bool,
 ) -> bool {
-    if compiled_self.avx2 || already_dispatched || disable_dispatch || !candidate_exists_and_executable {
+    if compiled_self.avx2
+        || already_dispatched
+        || disable_dispatch
+        || !candidate_exists_and_executable
+    {
         return false;
     }
     check_x86_simd_requirements(CompiledX86SimdFeatures::avx2_optimized_tier(), detected_cpu)
@@ -680,9 +688,7 @@ pub fn try_exec_avx2_sibling() {
             Ok("1" | "true" | "TRUE")
         );
         let current_exe = std::env::current_exe().ok();
-        let candidate = current_exe
-            .as_deref()
-            .and_then(resolve_avx2_sibling_path);
+        let candidate = current_exe.as_deref().and_then(resolve_avx2_sibling_path);
         let candidate_executable = candidate.as_deref().is_some_and(is_executable_file);
         let compiled_self = compiled_x86_simd_features();
         let detected_cpu = detected_x86_simd_features();
@@ -707,7 +713,6 @@ pub fn try_exec_avx2_sibling() {
         }
     }
 }
-
 
 /// Local AI Provider implementing `AiProvider` via embedded speech engine.
 pub struct LocalAiProvider {
@@ -780,7 +785,8 @@ impl LocalAiProvider {
             } else {
                 let mut ctx_params = local_speech_engine::WhisperContextParameters::default();
                 if let Ok(use_gpu_str) = std::env::var("OPENDICTATE_USE_GPU") {
-                    ctx_params.use_gpu(use_gpu_str != "0" && !use_gpu_str.eq_ignore_ascii_case("false"));
+                    ctx_params
+                        .use_gpu(use_gpu_str != "0" && !use_gpu_str.eq_ignore_ascii_case("false"));
                 }
                 if let Ok(dev_str) = std::env::var("OPENDICTATE_GPU_DEVICE")
                     && let Ok(dev_id) = dev_str.parse::<i32>()
@@ -793,11 +799,10 @@ impl LocalAiProvider {
                             AiError::ApiError(format!("Local speech engine context error: {}", e))
                         })?,
                 );
-                let loaded_state = std::sync::Arc::new(std::sync::Mutex::new(
-                    loaded_ctx.create_state().map_err(|e| {
-                        AiError::ApiError(format!("Local speech engine state error: {}", e))
-                    })?,
-                ));
+                let loaded_state =
+                    std::sync::Arc::new(std::sync::Mutex::new(loaded_ctx.create_state().map_err(
+                        |e| AiError::ApiError(format!("Local speech engine state error: {}", e)),
+                    )?));
                 *guard = Some(CachedWhisperEngine {
                     path: path_str.to_string(),
                     _ctx: loaded_ctx,
@@ -870,9 +875,8 @@ impl LocalAiProvider {
             .file_name()
             .and_then(|f| f.to_str())
             .unwrap_or("");
-        let is_english_model = filename.contains(".en.")
-            || filename.contains(".en-")
-            || filename.ends_with(".en.bin");
+        let is_english_model =
+            filename.contains(".en.") || filename.contains(".en-") || filename.ends_with(".en.bin");
 
         if let Some(lang) = language {
             let trimmed = lang.trim();

@@ -50,7 +50,11 @@ impl GroqProvider {
     pub fn new(api_key: impl Into<String>, model: Option<String>) -> Self {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
-            .user_agent(concat!("OpenDictate/", env!("CARGO_PKG_VERSION"), " (Linux; x86_64)"))
+            .user_agent(concat!(
+                "OpenDictate/",
+                env!("CARGO_PKG_VERSION"),
+                " (Linux; x86_64)"
+            ))
             .build()
             .unwrap_or_default();
         Self::with_client(api_key, model, client)

@@ -582,7 +582,9 @@ fn resolve_wpctl_binary() -> Option<String> {
             }
         }
     }
-    if let Ok(output) = std::process::Command::new("wpctl").arg("--version").output()
+    if let Ok(output) = std::process::Command::new("wpctl")
+        .arg("--version")
+        .output()
         && output.status.success()
     {
         return Some("wpctl".to_string());

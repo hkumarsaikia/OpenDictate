@@ -7,8 +7,8 @@ use opendictate::config::Config;
 use opendictate::services::i18n::get_languages;
 use opendictate::services::storage::StorageService;
 use opendictate::ui::main_window::header::{
-    build_about_dialog, build_github_sponsors_url, build_header_bar, build_sponsor_dialog,
-    format_history_snippet, parse_custom_sponsor_amount, MAX_SPONSOR_AMOUNT, MIN_SPONSOR_AMOUNT,
+    MAX_SPONSOR_AMOUNT, MIN_SPONSOR_AMOUNT, build_about_dialog, build_github_sponsors_url,
+    build_header_bar, build_sponsor_dialog, format_history_snippet, parse_custom_sponsor_amount,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -617,7 +617,10 @@ fn test_sponsor_amount_parsing_and_validation() {
 
     // Numeric overflow (larger than u32::MAX)
     assert_eq!(parse_custom_sponsor_amount("4294967296"), None);
-    assert_eq!(parse_custom_sponsor_amount("999999999999999999999999999999"), None);
+    assert_eq!(
+        parse_custom_sponsor_amount("999999999999999999999999999999"),
+        None
+    );
     assert_eq!(
         parse_custom_sponsor_amount(&format!("{}", u64::from(u32::MAX) + 1)),
         None
@@ -628,11 +631,26 @@ fn test_sponsor_amount_parsing_and_validation() {
 fn test_sponsor_url_construction_and_stale_prevention() {
     // Ensuring invalid, absent, or out-of-range amounts cannot produce a sponsorship URL
     assert_eq!(build_github_sponsors_url(None), None);
-    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("")), None);
-    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("0")), None);
-    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("12001")), None);
-    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("invalid")), None);
-    assert_eq!(build_github_sponsors_url(parse_custom_sponsor_amount("5.50")), None);
+    assert_eq!(
+        build_github_sponsors_url(parse_custom_sponsor_amount("")),
+        None
+    );
+    assert_eq!(
+        build_github_sponsors_url(parse_custom_sponsor_amount("0")),
+        None
+    );
+    assert_eq!(
+        build_github_sponsors_url(parse_custom_sponsor_amount("12001")),
+        None
+    );
+    assert_eq!(
+        build_github_sponsors_url(parse_custom_sponsor_amount("invalid")),
+        None
+    );
+    assert_eq!(
+        build_github_sponsors_url(parse_custom_sponsor_amount("5.50")),
+        None
+    );
 
     // Ensuring direct out-of-range Option<u32> values cannot construct a URL
     assert_eq!(build_github_sponsors_url(Some(0)), None);
@@ -784,7 +802,10 @@ fn test_sponsor_dialog_amount_state_and_ui_transitions() {
 
         // 1. Initial State: $5 preset selected, CTA enabled, label "Sponsor $5 on GitHub 💖"
         assert!(toggles[1].is_active(), "Default preset $5 must be active");
-        assert!(cta_btn.is_sensitive(), "CTA button must be sensitive initially");
+        assert!(
+            cta_btn.is_sensitive(),
+            "CTA button must be sensitive initially"
+        );
         assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $5 on GitHub 💖"));
         assert_eq!(entry.text().as_str(), "");
 
@@ -798,7 +819,10 @@ fn test_sponsor_dialog_amount_state_and_ui_transitions() {
 
         // 3. Valid custom amount: enter "25"
         entry.set_text("25");
-        assert!(!toggles[2].is_active(), "Preset toggles must be inactive when custom amount is entered");
+        assert!(
+            !toggles[2].is_active(),
+            "Preset toggles must be inactive when custom amount is entered"
+        );
         assert!(cta_btn.is_sensitive());
         assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $25 on GitHub 💖"));
 
@@ -810,36 +834,60 @@ fn test_sponsor_dialog_amount_state_and_ui_transitions() {
         // 5. Maximum supported amount: enter "12000"
         entry.set_text("12000");
         assert!(cta_btn.is_sensitive());
-        assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $12000 on GitHub 💖"));
+        assert_eq!(
+            cta_btn.label().as_deref(),
+            Some("Sponsor $12000 on GitHub 💖")
+        );
 
         // 6. Immediately above maximum supported amount: enter "12001"
         entry.set_text("12001");
-        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for amount exceeding $12,000");
+        assert!(
+            !cta_btn.is_sensitive(),
+            "CTA button must be disabled for amount exceeding $12,000"
+        );
         assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
 
         // 7. Clearing a previously valid custom amount
         entry.set_text("");
-        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled when custom amount is cleared");
-        assert_eq!(cta_btn.label().as_deref(), Some("Select an amount to sponsor"));
+        assert!(
+            !cta_btn.is_sensitive(),
+            "CTA button must be disabled when custom amount is cleared"
+        );
+        assert_eq!(
+            cta_btn.label().as_deref(),
+            Some("Select an amount to sponsor")
+        );
 
         // 8. Zero value
         entry.set_text("0");
-        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for zero amount");
+        assert!(
+            !cta_btn.is_sensitive(),
+            "CTA button must be disabled for zero amount"
+        );
         assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
 
         // 9. Decimal input
         entry.set_text("12.50");
-        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for decimal amount");
+        assert!(
+            !cta_btn.is_sensitive(),
+            "CTA button must be disabled for decimal amount"
+        );
         assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
 
         // 10. Alphabetic input
         entry.set_text("fifty");
-        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for alphabetic amount");
+        assert!(
+            !cta_btn.is_sensitive(),
+            "CTA button must be disabled for alphabetic amount"
+        );
         assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
 
         // 11. Overflow input
         entry.set_text("99999999999999999999999");
-        assert!(!cta_btn.is_sensitive(), "CTA button must be disabled for overflow amount");
+        assert!(
+            !cta_btn.is_sensitive(),
+            "CTA button must be disabled for overflow amount"
+        );
         assert_eq!(cta_btn.label().as_deref(), Some("Invalid amount"));
 
         // Re-selecting a preset: click $20 (index 3)
@@ -847,7 +895,10 @@ fn test_sponsor_dialog_amount_state_and_ui_transitions() {
         assert!(toggles[3].is_active());
         assert!(cta_btn.is_sensitive());
         assert_eq!(cta_btn.label().as_deref(), Some("Sponsor $20 on GitHub 💖"));
-        assert_eq!(entry.text().as_str(), "", "Selecting a preset must clear the custom entry field");
+        assert_eq!(
+            entry.text().as_str(),
+            "",
+            "Selecting a preset must clear the custom entry field"
+        );
     }
 }
-

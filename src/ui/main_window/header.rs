@@ -1408,7 +1408,10 @@ pub fn parse_custom_sponsor_amount(raw: &str) -> Option<u32> {
 pub fn build_github_sponsors_url(amount: Option<u32>) -> Option<String> {
     let amt = amount?;
     if (MIN_SPONSOR_AMOUNT..=MAX_SPONSOR_AMOUNT).contains(&amt) {
-        Some(format!("https://github.com/sponsors/hkumarsaikia?amount={}", amt))
+        Some(format!(
+            "https://github.com/sponsors/hkumarsaikia?amount={}",
+            amt
+        ))
     } else {
         None
     }
@@ -1470,12 +1473,7 @@ pub fn build_sponsor_dialog() -> libadwaita::Dialog {
         .column_homogeneous(true)
         .build();
 
-    let tiers: [(u32, &str); 4] = [
-        (2, "$2"),
-        (5, "$5"),
-        (10, "$10"),
-        (20, "$20"),
-    ];
+    let tiers: [(u32, &str); 4] = [(2, "$2"), (5, "$5"), (10, "$10"), (20, "$20")];
 
     let selected_amount: Rc<RefCell<Option<u32>>> = Rc::new(RefCell::new(Some(5)));
     let mut tier_buttons: Vec<(u32, gtk4::ToggleButton)> = Vec::with_capacity(4);
@@ -1532,9 +1530,8 @@ pub fn build_sponsor_dialog() -> libadwaita::Dialog {
 
     // Wire preset toggle buttons to update CTA label and clear custom entry
     let is_updating = Rc::new(RefCell::new(false));
-    let all_toggles: Rc<Vec<gtk4::ToggleButton>> = Rc::new(
-        tier_buttons.iter().map(|(_, b)| b.clone()).collect(),
-    );
+    let all_toggles: Rc<Vec<gtk4::ToggleButton>> =
+        Rc::new(tier_buttons.iter().map(|(_, b)| b.clone()).collect());
 
     for (amt, toggle) in &tier_buttons {
         let amt_val = *amt;

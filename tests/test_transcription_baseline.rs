@@ -243,11 +243,36 @@ fn test_cpu_simd_compatibility_and_portable_x86_64_v3_build_guard() {
         );
         // Verify non-contract scalar/vector extensions remain disabled in both tiers
         const { assert!(!cfg!(target_feature = "bmi1"), "bmi1 must remain disabled") };
-        const { assert!(!cfg!(target_feature = "lzcnt"), "lzcnt must remain disabled") };
-        const { assert!(!cfg!(target_feature = "popcnt"), "popcnt must remain disabled") };
-        const { assert!(!cfg!(target_feature = "movbe"), "movbe must remain disabled") };
-        const { assert!(!cfg!(target_feature = "avx512f"), "avx512f must remain disabled") };
-        const { assert!(!cfg!(target_feature = "avxvnni"), "avxvnni must remain disabled") };
+        const {
+            assert!(
+                !cfg!(target_feature = "lzcnt"),
+                "lzcnt must remain disabled"
+            )
+        };
+        const {
+            assert!(
+                !cfg!(target_feature = "popcnt"),
+                "popcnt must remain disabled"
+            )
+        };
+        const {
+            assert!(
+                !cfg!(target_feature = "movbe"),
+                "movbe must remain disabled"
+            )
+        };
+        const {
+            assert!(
+                !cfg!(target_feature = "avx512f"),
+                "avx512f must remain disabled"
+            )
+        };
+        const {
+            assert!(
+                !cfg!(target_feature = "avxvnni"),
+                "avxvnni must remain disabled"
+            )
+        };
 
         for (feat_name, is_enabled) in [
             ("sse3", cfg!(target_feature = "sse3")),
@@ -370,7 +395,10 @@ fn test_cpu_simd_compatibility_and_portable_x86_64_v3_build_guard() {
         let zen3_msg = check_x86_simd_requirements(avx512_required, avx2_tier)
             .expect_err("AVX-512 binary on Zen 3 must fail")
             .to_string();
-        assert!(zen3_msg.contains("AVX512F"), "Must report AVX512F: {zen3_msg}");
+        assert!(
+            zen3_msg.contains("AVX512F"),
+            "Must report AVX512F: {zen3_msg}"
+        );
         assert!(
             zen3_msg.contains("AVX512_VNNI"),
             "Must report AVX512_VNNI: {zen3_msg}"
@@ -464,15 +492,69 @@ fn test_cpu_simd_compatibility_and_portable_x86_64_v3_build_guard() {
         }
         //    - Missing any single required flag in the 9-feature AVX2 tier must block dispatch
         for (label, partial_cpu) in [
-            ("missing SSE3", CompiledX86SimdFeatures { sse3: false, ..avx2_tier }),
-            ("missing SSSE3", CompiledX86SimdFeatures { ssse3: false, ..avx2_tier }),
-            ("missing SSE4.1", CompiledX86SimdFeatures { sse41: false, ..avx2_tier }),
-            ("missing SSE4.2", CompiledX86SimdFeatures { sse42: false, ..avx2_tier }),
-            ("missing AVX", CompiledX86SimdFeatures { avx: false, ..avx2_tier }),
-            ("missing AVX2", CompiledX86SimdFeatures { avx2: false, ..avx2_tier }),
-            ("missing FMA", CompiledX86SimdFeatures { fma: false, ..avx2_tier }),
-            ("missing F16C", CompiledX86SimdFeatures { f16c: false, ..avx2_tier }),
-            ("missing BMI2", CompiledX86SimdFeatures { bmi2: false, ..avx2_tier }),
+            (
+                "missing SSE3",
+                CompiledX86SimdFeatures {
+                    sse3: false,
+                    ..avx2_tier
+                },
+            ),
+            (
+                "missing SSSE3",
+                CompiledX86SimdFeatures {
+                    ssse3: false,
+                    ..avx2_tier
+                },
+            ),
+            (
+                "missing SSE4.1",
+                CompiledX86SimdFeatures {
+                    sse41: false,
+                    ..avx2_tier
+                },
+            ),
+            (
+                "missing SSE4.2",
+                CompiledX86SimdFeatures {
+                    sse42: false,
+                    ..avx2_tier
+                },
+            ),
+            (
+                "missing AVX",
+                CompiledX86SimdFeatures {
+                    avx: false,
+                    ..avx2_tier
+                },
+            ),
+            (
+                "missing AVX2",
+                CompiledX86SimdFeatures {
+                    avx2: false,
+                    ..avx2_tier
+                },
+            ),
+            (
+                "missing FMA",
+                CompiledX86SimdFeatures {
+                    fma: false,
+                    ..avx2_tier
+                },
+            ),
+            (
+                "missing F16C",
+                CompiledX86SimdFeatures {
+                    f16c: false,
+                    ..avx2_tier
+                },
+            ),
+            (
+                "missing BMI2",
+                CompiledX86SimdFeatures {
+                    bmi2: false,
+                    ..avx2_tier
+                },
+            ),
         ] {
             assert!(
                 !should_dispatch_to_avx2_binary(portable_tier, partial_cpu, false, false, true),
@@ -516,7 +598,6 @@ fn test_cpu_simd_compatibility_and_portable_x86_64_v3_build_guard() {
             .expect("Portable x86-64-v1 tier must be satisfied on any x86_64 CPU");
     }
 }
-
 
 #[test]
 fn test_short_time_windowed_vad_and_streaming_pause_resume_edge_cases() {
@@ -564,7 +645,10 @@ fn test_short_time_windowed_vad_and_streaming_pause_resume_edge_cases() {
         .snapshot_samples_16k(60.0, 0, false)
         .expect("initial snapshot")
         .expect("initial speech must produce snapshot");
-    assert!(snap1.tail_is_quiet, "Initial speech + 250ms silence must have quiet tail");
+    assert!(
+        snap1.tail_is_quiet,
+        "Initial speech + 250ms silence must have quiet tail"
+    );
     let mut last_transcribed_len = snap1.total_native_samples;
     let mut prev_finalized = true;
 
@@ -596,7 +680,10 @@ fn test_short_time_windowed_vad_and_streaming_pause_resume_edge_cases() {
     );
     last_transcribed_len = snap_onset.total_native_samples;
     prev_finalized = snap_onset.tail_is_quiet;
-    assert!(!prev_finalized, "Active speech at end of tick must mark tail_is_quiet=false");
+    assert!(
+        !prev_finalized,
+        "Active speech at end of tick must mark tail_is_quiet=false"
+    );
     let _ = last_transcribed_len;
 
     // 4. Short word spoken immediately before Stop after 18 seconds of silence (pause-and-resume)
@@ -640,7 +727,6 @@ fn test_short_time_windowed_vad_and_streaming_pause_resume_edge_cases() {
         "Stop must return full normalized 16kHz buffer including the newly spoken word"
     );
 }
-
 
 #[test]
 fn test_resampling_fidelity_across_hardware_sample_rates() {
@@ -693,8 +779,9 @@ fn test_reproducible_whisper_latency_and_silence_benchmark() {
         resolve_model_path("tiny.en", None),
         std::env::var("HOME")
             .map(|h| {
-                std::path::PathBuf::from(h)
-                    .join("snap/opendictate/current/.local/share/opendictate/models/ggml-tiny.en.bin")
+                std::path::PathBuf::from(h).join(
+                    "snap/opendictate/current/.local/share/opendictate/models/ggml-tiny.en.bin",
+                )
             })
             .unwrap_or_default(),
         resolve_model_path("tiny", None),
@@ -843,14 +930,20 @@ fn test_reproducible_whisper_latency_and_silence_benchmark() {
                 "spoken_medium_7.8s",
                 (78 * 16_000 / 10).min(speech_samples.len()),
                 "This is the dummy output module. It seems your speech dispatcher is working, but none of its output modules is, except me.",
-                &["dummy", "output", "module", "seems", "speech", "working", "none", "modules", "except", "me"],
+                &[
+                    "dummy", "output", "module", "seems", "speech", "working", "none", "modules",
+                    "except", "me",
+                ],
                 0.10, // <= 2/22 edits (9.09%)
             ),
             (
                 "spoken_long_11.2s",
                 (112 * 16_000 / 10).min(speech_samples.len()),
                 "This is the dummy output module. It seems your speech dispatcher is working, but none of its output modules is, except me. Please check out your log file to see what the problem is.",
-                &["dummy", "output", "module", "working", "except", "Please", "check", "out", "log", "file", "problem"],
+                &[
+                    "dummy", "output", "module", "working", "except", "Please", "check", "out",
+                    "log", "file", "problem",
+                ],
                 0.06, // <= 2/34 edits (5.88%)
             ),
         ];
@@ -1181,7 +1274,10 @@ fn test_detailed_whisper_benchmark_matrix() {
     let (rss_after_cold, hwm_after_cold) = process_memory_mb();
 
     println!("================================================================================");
-    println!("SYSTEM_INFO: {}", local_speech_engine::print_system_info().trim());
+    println!(
+        "SYSTEM_INFO: {}",
+        local_speech_engine::print_system_info().trim()
+    );
     println!("MODEL: {:?}", model_path);
     println!(
         "COLD_START_MS: {:.2} ms | RSS_BEFORE: {:.1} MB | RSS_AFTER: {:.1} MB | PEAK_HWM: {:.1} MB",
@@ -1213,14 +1309,7 @@ fn test_detailed_whisper_benchmark_matrix() {
         println!("\n--- THREAD COUNT: {} (iters={}) ---", threads, iters);
         println!(
             "{:<18} | {:>6} | {:>10} | {:>10} | {:>8} | {:>9} | {:>8} | {:>8}",
-            "Clip",
-            "Sec",
-            "Warm(ms)",
-            "E2E(ms)",
-            "WER(%)",
-            "Edits",
-            "CPU(%)",
-            "RSS(MB)"
+            "Clip", "Sec", "Warm(ms)", "E2E(ms)", "WER(%)", "Edits", "CPU(%)", "RSS(MB)"
         );
         println!("{}", "-".repeat(96));
 
@@ -1306,7 +1395,9 @@ fn test_detailed_whisper_benchmark_matrix() {
 
     if std::env::var("BENCH_STREAMING").is_ok() {
         use opendictate::audio::recorder::AudioRecorder;
-        println!("\n=== STREAMING PARTIAL-TRANSCRIPTION PIPELINE BENCHMARK (3.0s speech + 2.25s pause before Stop @ 48kHz, 450ms ticks) ===");
+        println!(
+            "\n=== STREAMING PARTIAL-TRANSCRIPTION PIPELINE BENCHMARK (3.0s speech + 2.25s pause before Stop @ 48kHz, 450ms ticks) ==="
+        );
         let provider = LocalAiProvider::with_config(
             "custom".to_string(),
             Some(model_path.to_string_lossy().to_string()),
@@ -1365,8 +1456,7 @@ fn test_detailed_whisper_benchmark_matrix() {
             let end = (offset + tick_samples_48k).min(full_session_48k.len());
             rec_opt.push_test_samples(&full_session_48k[offset..end], 48_000);
             offset = end;
-            if let Ok(Some(snap)) =
-                snap_opt.snapshot_samples_16k(60.0, opt_last_len, opt_finalized)
+            if let Ok(Some(snap)) = snap_opt.snapshot_samples_16k(60.0, opt_last_len, opt_finalized)
             {
                 opt_last_len = snap.total_native_samples;
                 if snap.samples_16k.is_empty() {
@@ -1408,7 +1498,12 @@ fn test_detailed_whisper_benchmark_matrix() {
         );
         println!(
             "OPTIMIZED STREAMING: passes={} | total_compute={:.1} ms | total_cpu={:.1} ms | stop_to_text_latency={:.2} ms | reused_final={} | text={:?}",
-            opt_passes, opt_total_wall_ms, opt_total_cpu_ms, opt_stop_e2e_ms, reused, opt_final_text
+            opt_passes,
+            opt_total_wall_ms,
+            opt_total_cpu_ms,
+            opt_stop_e2e_ms,
+            reused,
+            opt_final_text
         );
     }
 }

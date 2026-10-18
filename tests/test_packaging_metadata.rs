@@ -149,7 +149,9 @@ fn test_flatpak_manifest_finish_args() {
     assert!(!finish_args.iter().any(|a| a == "--device=all"));
     assert!(!finish_args.iter().any(|a| a == "--filesystem=home"));
     assert!(
-        !finish_args.iter().any(|a| a.starts_with("--filesystem=xdg-")),
+        !finish_args
+            .iter()
+            .any(|a| a.starts_with("--filesystem=xdg-")),
         "Flatpak must not request host XDG directory access; Flatpak automatically provides private isolated XDG storage"
     );
 }
@@ -402,7 +404,9 @@ fn test_legacy_tier_sandbox_rules() {
 
     // Persistent storage for offline models and history: Flatpak relies on sandbox-isolated private storage
     assert!(
-        !flatpak_finish_args.iter().any(|a| a.starts_with("--filesystem=xdg-")),
+        !flatpak_finish_args
+            .iter()
+            .any(|a| a.starts_with("--filesystem=xdg-")),
         "Flatpak manifest must not punch holes into host XDG directories (flatpak-builder-lint rule)"
     );
 }
@@ -580,8 +584,9 @@ fn test_debian_desktop_launcher_canonical_single_entry() {
     );
 
     // 3. Verify canonical desktop file contains valid desktop actions and identity
-    let desktop_content = fs::read_to_string(project_root().join("data/io.github.hkumarsaikia.OpenDictate.desktop"))
-        .expect("read canonical desktop entry");
+    let desktop_content =
+        fs::read_to_string(project_root().join("data/io.github.hkumarsaikia.OpenDictate.desktop"))
+            .expect("read canonical desktop entry");
     assert!(desktop_content.contains("Type=Application"));
     assert!(desktop_content.contains("Name=OpenDictate"));
     assert!(desktop_content.contains("Icon=io.github.hkumarsaikia.OpenDictate"));
@@ -663,10 +668,16 @@ fn test_flatpak_json_manifest_core_and_sandbox() {
     assert!(!finish_args.contains(&"--socket=x11".to_string()));
     assert!(!finish_args.contains(&"--device=all".to_string()));
     assert!(!finish_args.contains(&"--filesystem=home".to_string()));
-    assert!(!finish_args.iter().any(|a| a.starts_with("--filesystem=xdg-")));
+    assert!(
+        !finish_args
+            .iter()
+            .any(|a| a.starts_with("--filesystem=xdg-"))
+    );
 
     // Verify offline cargo sources and git pinning
-    let modules = json["modules"].as_array().expect("modules must be an array");
+    let modules = json["modules"]
+        .as_array()
+        .expect("modules must be an array");
     let opendictate_mod = modules
         .iter()
         .find(|m| m["name"].as_str() == Some("opendictate"))
@@ -691,7 +702,9 @@ fn test_flatpak_json_manifest_core_and_sandbox() {
     );
 
     assert!(
-        sources.iter().any(|s| s.as_str() == Some("cargo-sources.json")),
+        sources
+            .iter()
+            .any(|s| s.as_str() == Some("cargo-sources.json")),
         "cargo-sources.json must be referenced in opendictate sources"
     );
 }
@@ -699,7 +712,10 @@ fn test_flatpak_json_manifest_core_and_sandbox() {
 #[test]
 fn test_third_party_license_collection_integrity() {
     let licenses_dir = project_root().join("licenses");
-    assert!(licenses_dir.exists(), "licenses/ directory must exist in repository root");
+    assert!(
+        licenses_dir.exists(),
+        "licenses/ directory must exist in repository root"
+    );
 
     let required_files = [
         "THIRD_PARTY_LICENSES.md",
@@ -712,7 +728,11 @@ fn test_third_party_license_collection_integrity() {
 
     for file in &required_files {
         let p = licenses_dir.join(file);
-        assert!(p.exists(), "Required license file missing: licenses/{}", file);
+        assert!(
+            p.exists(),
+            "Required license file missing: licenses/{}",
+            file
+        );
         let sz = fs::metadata(&p).expect("read metadata").len();
         assert!(sz > 0, "License file licenses/{} must not be empty", file);
     }
@@ -721,20 +741,31 @@ fn test_third_party_license_collection_integrity() {
         .expect("read THIRD_PARTY_LICENSES.md");
 
     // Verify critical legal disclosures
-    assert!(md_content.contains("option-ext"), "Must document option-ext");
+    assert!(
+        md_content.contains("option-ext"),
+        "Must document option-ext"
+    );
     assert!(md_content.contains("MPL-2.0"), "Must document MPL-2.0");
     assert!(md_content.contains("r-efi"), "Must document r-efi");
     assert!(md_content.contains("alsa-lib"), "Must document alsa-lib");
     assert!(md_content.contains("LGPL-2.1"), "Must document LGPL-2.1");
-    assert!(md_content.contains("whisper.cpp"), "Must document whisper.cpp");
-    assert!(md_content.contains("OpenAI"), "Must document OpenAI Whisper weights");
+    assert!(
+        md_content.contains("whisper.cpp"),
+        "Must document whisper.cpp"
+    );
+    assert!(
+        md_content.contains("OpenAI"),
+        "Must document OpenAI Whisper weights"
+    );
 }
 
 #[test]
 fn test_manifests_install_third_party_licenses() {
     // 1. Flatpak YAML manifest
-    let flatpak_yaml = fs::read_to_string(project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml"))
-        .expect("read Flatpak YAML");
+    let flatpak_yaml = fs::read_to_string(
+        project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.yml"),
+    )
+    .expect("read Flatpak YAML");
     assert!(
         flatpak_yaml.contains("licenses/THIRD_PARTY_LICENSES.md /app/share/licenses/io.github.hkumarsaikia.OpenDictate/THIRD_PARTY_LICENSES.md"),
         "Flatpak YAML must install THIRD_PARTY_LICENSES.md"
@@ -745,8 +776,10 @@ fn test_manifests_install_third_party_licenses() {
     );
 
     // 2. Flatpak JSON manifest
-    let flatpak_json = fs::read_to_string(project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.json"))
-        .expect("read Flatpak JSON");
+    let flatpak_json = fs::read_to_string(
+        project_root().join("packaging/flatpak/io.github.hkumarsaikia.OpenDictate.json"),
+    )
+    .expect("read Flatpak JSON");
     assert!(
         flatpak_json.contains("licenses/THIRD_PARTY_LICENSES.md /app/share/licenses/io.github.hkumarsaikia.OpenDictate/THIRD_PARTY_LICENSES.md"),
         "Flatpak JSON must install THIRD_PARTY_LICENSES.md"
@@ -765,8 +798,9 @@ fn test_manifests_install_third_party_licenses() {
     );
 
     // 4. AppImage build script
-    let appimage_sh = fs::read_to_string(project_root().join("packaging/appimage/build_appimage.sh"))
-        .expect("read build_appimage.sh");
+    let appimage_sh =
+        fs::read_to_string(project_root().join("packaging/appimage/build_appimage.sh"))
+            .expect("read build_appimage.sh");
     assert!(
         appimage_sh.contains("THIRD_PARTY_LICENSES.md"),
         "AppImage build script must install THIRD_PARTY_LICENSES.md"
@@ -780,4 +814,3 @@ fn test_manifests_install_third_party_licenses() {
         "Debian build script must install THIRD_PARTY_LICENSES.md"
     );
 }
-
