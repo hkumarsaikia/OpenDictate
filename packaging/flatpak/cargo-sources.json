@@ -3590,14 +3590,14 @@
     {
         "type": "archive",
         "archive-type": "tar-gzip",
-        "url": "https://static.crates.io/crates/rustls/rustls-0.23.45.crate",
-        "sha256": "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634",
-        "dest": "cargo/vendor/rustls-0.23.45"
+        "url": "https://static.crates.io/crates/rustls/rustls-0.23.46.crate",
+        "sha256": "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf",
+        "dest": "cargo/vendor/rustls-0.23.46"
     },
     {
         "type": "inline",
-        "contents": "{\"package\": \"0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634\", \"files\": {}}",
-        "dest": "cargo/vendor/rustls-0.23.45",
+        "contents": "{\"package\": \"48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf\", \"files\": {}}",
+        "dest": "cargo/vendor/rustls-0.23.46",
         "dest-filename": ".cargo-checksum.json"
     },
     {
@@ -5566,14 +5566,14 @@
     {
         "type": "archive",
         "archive-type": "tar-gzip",
-        "url": "https://static.crates.io/crates/yoke-derive/yoke-derive-0.8.3.crate",
-        "sha256": "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78",
-        "dest": "cargo/vendor/yoke-derive-0.8.3"
+        "url": "https://static.crates.io/crates/yoke-derive/yoke-derive-0.8.4.crate",
+        "sha256": "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71",
+        "dest": "cargo/vendor/yoke-derive-0.8.4"
     },
     {
         "type": "inline",
-        "contents": "{\"package\": \"33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78\", \"files\": {}}",
-        "dest": "cargo/vendor/yoke-derive-0.8.3",
+        "contents": "{\"package\": \"ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71\", \"files\": {}}",
+        "dest": "cargo/vendor/yoke-derive-0.8.4",
         "dest-filename": ".cargo-checksum.json"
     },
     {

@@ -142,8 +142,8 @@ Alternatively, inspect CPU flags using `lscpu`:
 lscpu | grep -i Flags | grep -E 'avx2'
 ```
 
-- **Recommended for most Debian/Ubuntu users:** Install `opendictate_2.0.2_universal_amd64.deb` (automatic runtime dispatch).
-- **Single-binary alternatives:** Install `opendictate_2.0.2_avx2_amd64.deb` (AVX2-only) or `opendictate_2.0.2_portable_amd64.deb` (SSE2-only).
+- **Recommended for all Debian/Ubuntu users:** Install `opendictate_2.0.3_amd64.deb` (automatic runtime dispatch with portable SSE2 launcher and AVX2 vector sibling).
+- **Single-binary alternatives:** Install `opendictate_2.0.3_avx2_amd64.deb` (AVX2-only) or `opendictate_2.0.3_portable_amd64.deb` (SSE2-only).
 
 ---
 
@@ -220,7 +220,7 @@ snapcraft --use-lxd
 #### Installing & Connecting Plugs
 ```bash
 # Install local snap package
-sudo snap install --dangerous opendictate_2.0.2_amd64.snap
+sudo snap install --dangerous opendictate_2.0.3_amd64.snap
 
 # Verify and connect audio recording interface
 sudo snap connect opendictate:audio-record
@@ -274,24 +274,23 @@ bash build_rust_deb.sh --rebuild --variant all
 ```
 
 Output files in `dist/`:
-- `dist/opendictate_2.0.2_universal_amd64.deb`
-- `dist/opendictate_2.0.2_portable_amd64.deb`
-- `dist/opendictate_2.0.2_avx2_amd64.deb`
-- `dist/opendictate_2.0.2_amd64.deb` (backwards-compatible symlink to universal)
+- `dist/opendictate_2.0.3_amd64.deb` (canonical dual-binary package with universal runtime dispatch)
+- `dist/opendictate_2.0.3_portable_amd64.deb` (portable baseline SSE2 single-binary)
+- `dist/opendictate_2.0.3_avx2_amd64.deb` (AVX2-accelerated single-binary)
 
 #### Inspecting Package Integrity
 ```bash
 # Verify file contents and permissions
-dpkg -c dist/opendictate_2.0.2_universal_amd64.deb
+dpkg -c dist/opendictate_2.0.3_amd64.deb
 
 # Verify Debian package control fields
-dpkg -I dist/opendictate_2.0.2_universal_amd64.deb
+dpkg -I dist/opendictate_2.0.3_amd64.deb
 ```
 
 #### Installing on Target Machine
 ```bash
-# Install chosen variant
-sudo dpkg -i dist/opendictate_2.0.2_universal_amd64.deb
+# Install canonical package
+sudo dpkg -i dist/opendictate_2.0.3_amd64.deb
 
 # Resolve any missing host dependencies
 sudo apt-get install -f -y

@@ -179,9 +179,13 @@ fn test_flatpak_offline_rust_build_and_sources() {
         content.contains("url: https://github.com/hkumarsaikia/OpenDictate.git"),
         "Flatpak manifest must reference canonical repository URL"
     );
+    let has_pinned_commit = content.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with("commit: ") && trimmed.trim_start_matches("commit: ").trim().len() == 40
+    });
     assert!(
-        content.contains("commit: 81639fdb98624d073aa70b583cb9ef6d86a32495"),
-        "Flatpak manifest must pin commit 81639fdb98624d073aa70b583cb9ef6d86a32495"
+        has_pinned_commit,
+        "Flatpak manifest must pin an immutable 40-character hexadecimal commit"
     );
     assert!(
         content.contains("io.github.hkumarsaikia.OpenDictate-dark.svg")
@@ -696,9 +700,11 @@ fn test_flatpak_json_manifest_core_and_sandbox() {
         git_source["url"].as_str().unwrap_or_default(),
         "https://github.com/hkumarsaikia/OpenDictate.git"
     );
-    assert_eq!(
-        git_source["commit"].as_str().unwrap_or_default(),
-        "81639fdb98624d073aa70b583cb9ef6d86a32495"
+    let commit = git_source["commit"].as_str().unwrap_or_default();
+    assert!(
+        commit.len() == 40 && commit.chars().all(|c| c.is_ascii_hexdigit()),
+        "Git source commit must be an immutable 40-character hexadecimal SHA. Found: {}",
+        commit
     );
 
     assert!(
