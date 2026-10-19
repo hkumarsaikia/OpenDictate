@@ -73,7 +73,7 @@ cp -a "$SCRIPT_DIR/opendictate.spec" "$BUILD_DIR/SPECS/"
 
 # 6. Build RPM package
 echo "Running rpmbuild..."
-rpmbuild --define "_topdir $BUILD_DIR" --define "_dbpath $BUILD_DIR/rpmdb" -bb "$BUILD_DIR/SPECS/opendictate.spec"
+rpmbuild --define "_topdir $BUILD_DIR" --define "_dbpath $BUILD_DIR/rpmdb" --define "_buildhost localhost" -bb "$BUILD_DIR/SPECS/opendictate.spec"
 
 # 7. Collect and inspect artifacts
 RPM_OUT="$(find "$BUILD_DIR/RPMS" -name "*.rpm" | head -n 1)"
