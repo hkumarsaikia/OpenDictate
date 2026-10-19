@@ -6,6 +6,8 @@ Release:        1%{?dist}
 Summary:        Voice dictation and AI speech-to-text application for Linux
 
 License:        MIT
+Packager:       H. K. Saikia <hkumarsaikia@users.noreply.github.com>
+Group:          Applications/Productivity
 URL:            https://github.com/hkumarsaikia/OpenDictate
 Source0:        https://github.com/hkumarsaikia/OpenDictate/archive/refs/tags/v%{version}.tar.gz#/opendictate-%{version}.tar.gz
 Source1:        opendictate
@@ -14,10 +16,6 @@ Source2:        opendictate-avx2
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 ExclusiveArch:  x86_64
 
-Requires:       gtk4
-Requires:       libadwaita
-Requires:       alsa-lib
-Requires:       glibc >= 2.38
 
 %description
 OpenDictate is a native Linux voice dictation and AI speech-to-text
@@ -63,6 +61,44 @@ install -m 644 LICENSE %{buildroot}%{_licensedir}/opendictate/LICENSE
 install -m 644 licenses/THIRD_PARTY_LICENSES.md %{buildroot}%{_docdir}/opendictate/THIRD_PARTY_LICENSES.md
 install -m 644 README.md %{buildroot}%{_docdir}/opendictate/README.md
 
+mkdir -p %{buildroot}%{_mandir}/man1
+cat << 'EOF' | gzip -9 -n > %{buildroot}%{_mandir}/man1/opendictate.1.gz
+.TH OPENDICTATE 1 "October 2026" "opendictate 2.0.3" "User Commands"
+.SH NAME
+opendictate \- Voice dictation and AI speech-to-text application for Linux
+.SH SYNOPSIS
+.B opendictate
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+OpenDictate is a native Linux voice dictation and AI speech-to-text desktop application built with Rust, GTK4, and Libadwaita.
+.SH OPTIONS
+.TP
+\fB\-\-version\fR
+Print version information.
+.TP
+\fB\-\-help\fR
+Show command-line options.
+.SH AUTHOR
+H. K. Saikia <hkumarsaikia@users.noreply.github.com>
+EOF
+
+cat << 'EOF' | gzip -9 -n > %{buildroot}%{_mandir}/man1/opendictate-avx2.1.gz
+.TH OPENDICTATE-AVX2 1 "October 2026" "opendictate 2.0.3" "User Commands"
+.SH NAME
+opendictate-avx2 \- AVX2-accelerated binary for OpenDictate
+.SH SYNOPSIS
+.B opendictate-avx2
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+Optimized AVX2+FMA vector acceleration sibling binary for OpenDictate.
+.SH OPTIONS
+.TP
+\fB\-\-version\fR
+Print version information.
+.SH AUTHOR
+H. K. Saikia <hkumarsaikia@users.noreply.github.com>
+EOF
+
 %check
 %{buildroot}%{_bindir}/opendictate --version
 %{buildroot}%{_bindir}/opendictate-avx2 --version
@@ -94,6 +130,7 @@ fi
 %{_datadir}/applications/io.github.hkumarsaikia.OpenDictate.desktop
 %{_datadir}/metainfo/io.github.hkumarsaikia.OpenDictate.metainfo.xml
 %{_datadir}/icons/hicolor/*/apps/*
+%{_mandir}/man1/*
 
 %changelog
 * Sun Oct 18 2026 H. K. Saikia <hkumarsaikia@users.noreply.github.com> - 2.0.3-1
