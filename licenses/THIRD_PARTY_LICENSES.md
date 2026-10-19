@@ -12044,7 +12044,7 @@ software and any associated documentation (the "Software") to deal in the
     [... truncated 31 lines ...]
     ```
 
-#### `yoke-derive` v0.8.3
+#### `yoke-derive` v0.8.4
 - **SPDX License:** `Unicode-3.0`
 - **Repository / Source:** https://github.com/unicode-org/icu4x
 - **Authors / Contributors:** Manish Goregaokar <manishsmail@gmail.com>
@@ -12557,7 +12557,7 @@ The following crates are declared in `Cargo.lock` but are conditional on Windows
 | `redox_syscall` | `0.5.18` | `MIT` | Other OS / Architecture Fallback |
 | `redox_users` | `0.4.6` | `MIT` | Other OS / Architecture Fallback |
 | `ring` | `0.17.14` | `Apache-2.0 AND ISC` | Other OS / Architecture Fallback |
-| `rustls` | `0.23.45` | `Apache-2.0 OR ISC OR MIT` | Other OS / Architecture Fallback |
+| `rustls` | `0.23.46` | `Apache-2.0 OR ISC OR MIT` | Other OS / Architecture Fallback |
 | `rustls-webpki` | `0.103.15` | `ISC` | Other OS / Architecture Fallback |
 | `same-file` | `1.0.6` | `Unlicense/MIT` | Other OS / Architecture Fallback |
 | `schannel` | `0.1.29` | `MIT` | Windows (`cfg(windows)`) |

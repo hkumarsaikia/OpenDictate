@@ -102,14 +102,14 @@ def main():
 
     # Fallback if needed
     if not mpl20_text:
-        mpl_file = os.path.expanduser("~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/option-ext-0.2.0/LICENSE.txt")
-        if os.path.exists(mpl_file):
-            mpl20_text = open(mpl_file).read().strip()
+        local_mpl = os.path.join(licenses_dir, "LICENSE-MPL-2.0.txt")
+        if os.path.exists(local_mpl):
+            mpl20_text = open(local_mpl).read().strip()
 
     # alsa-lib COPYING for LGPL-2.1
-    alsa_copying = "/var/tmp/phase5i-flatpak-v203/builddir/files/share/licenses/io.github.hkumarsaikia.OpenDictate/alsa-lib/COPYING"
-    if os.path.exists(alsa_copying):
-        lgpl21_text = open(alsa_copying).read().strip()
+    local_lgpl = os.path.join(licenses_dir, "LICENSE-LGPL-2.1.txt")
+    if os.path.exists(local_lgpl):
+        lgpl21_text = open(local_lgpl).read().strip()
     else:
         # Check snap build or local path
         snap_copying = glob.glob("/snap/opendictate/current/usr/share/doc/libasound2*/copyright")
