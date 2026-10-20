@@ -36,19 +36,19 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.2/docs/screenshots/main-window-settings.png</image>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.3/docs/screenshots/main-window-settings.png</image>
       <caption>Main settings window with Cloud AI and offline Whisper configuration</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.2/docs/screenshots/header-menu-popover.png</image>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.3/docs/screenshots/header-menu-popover.png</image>
       <caption>Header menu with 28-language localization and dictation history</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.2/docs/screenshots/floating-minibar.png</image>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.3/docs/screenshots/floating-minibar.png</image>
       <caption>Floating MiniBar overlay with live acoustic waveform and transcript drawer</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.2/docs/screenshots/main-window-light.png</image>
+      <image>https://raw.githubusercontent.com/hkumarsaikia/OpenDictate/v2.0.3/docs/screenshots/main-window-light.png</image>
       <caption>Adaptive light theme with offline Whisper speech model management</caption>
     </screenshot>
   </screenshots>
@@ -77,7 +77,7 @@
   </supports>
 
   <releases>
-    <release version="2.0.3" date="2026-10-18">
+    <release version="2.0.3" date="2026-10-20">
       <description>
         <p>Packaging alignment and system tray sandbox compatibility release.</p>
         <ul>
